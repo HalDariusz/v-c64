@@ -1,0 +1,108 @@
+# Makefile - buduje i uruchamia wirtualny Commodore 64 bare-metal na /dev/kvm,
+# bez QEMU. `make run` robi wszystko: budowa + start.
+
+GUEST_CC      := gcc
+GUEST_CFLAGS  := -m32 -ffreestanding -O2 -fno-pie -fno-stack-protector \
+                 -Wall -Wextra -Iguest -Ibuild -DNMOS6502 -DDECIMALMODE
+NASM          := nasm
+NASMFLAGS     := -f elf32
+LD            := ld
+LDFLAGS       := -m elf_i386 -T guest/linker_raw.ld -nostdlib
+
+HOST_CC       := gcc
+HOST_CFLAGS   := -O2 -Wall -Wextra
+
+# SDL2 (opcjonalnie): jesli jest dostepny `pkg-config sdl2`, kvm_host dostaje
+# prawdziwe okno interaktywne (obraz + klawiatura + dzwiek w jednym oknie,
+# patrz README "Uruchomienie z podgladem i dzwiekiem"). Bez niego kvm_host
+# buduje sie i dziala tak jak dotychczas - w pelni headless (terminal +
+# build/frame.ppm + build/audio.wav/fifo).
+SDL2_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
+SDL2_LIBS   := $(shell pkg-config --libs sdl2 2>/dev/null)
+ifneq ($(SDL2_LIBS),)
+    HOST_CFLAGS += -DUSE_SDL2 $(SDL2_CFLAGS)
+endif
+
+GUEST_OBJS := build/boot.o build/fake6502.o build/memory_pla.o build/vic2.o \
+              build/cia.o build/sid.o build/reu.o build/cartridge.o build/kernel.o
+
+ROM_HEADERS := build/rom_kernal.h build/rom_basic.h build/rom_chargen.h build/rom_simons.h
+
+.PHONY: all run clean disk
+
+all: kvm_host build/c64_guest.bin disk
+
+build:
+	mkdir -p build
+
+disk:
+	mkdir -p disk
+
+# --- ROM-y: konwersja roms/*.bin -> tablice C (xxd). Jesli plik ROM-u nie
+# zostal dostarczony przez uzytkownika (patrz roms/README.md - prawdziwe
+# dumpy KERNAL/BASIC/CHARGEN/Simons' BASIC sa materialem objetym prawami
+# autorskimi i nie sa czescia tego repozytorium), tworzony jest wypelniony
+# zerami placeholder o poprawnym rozmiarze, aby cala reszta pipeline'u dala
+# sie zbudowac i uruchomic od razu.
+
+build/rom_kernal.h: roms/kernal.bin | build
+	xxd -i -n rom_kernal_file roms/kernal.bin > $@
+
+build/rom_basic.h: roms/basic.bin | build
+	xxd -i -n rom_basic_file roms/basic.bin > $@
+
+build/rom_chargen.h: roms/chargen.bin | build
+	xxd -i -n rom_chargen_file roms/chargen.bin > $@
+
+build/rom_simons.h: roms/simons.bin | build
+	xxd -i -n rom_simons_file roms/simons.bin > $@
+
+roms/kernal.bin:
+	@echo "[Makefile] roms/kernal.bin brak - tworze 8 KB placeholder (same zera)."
+	@echo "[Makefile] Podmien prawdziwym dumpem KERNAL ROM, by C64 realnie wystartowal."
+	dd if=/dev/zero of=$@ bs=1024 count=8 status=none
+
+roms/basic.bin:
+	@echo "[Makefile] roms/basic.bin brak - tworze 8 KB placeholder (same zera)."
+	dd if=/dev/zero of=$@ bs=1024 count=8 status=none
+
+roms/chargen.bin:
+	@echo "[Makefile] roms/chargen.bin brak - tworze 4 KB placeholder (same zera)."
+	dd if=/dev/zero of=$@ bs=1024 count=4 status=none
+
+roms/simons.bin:
+	@echo "[Makefile] roms/simons.bin brak - Simons' BASIC nie zostanie zaladowany (kartridz nieaktywny)."
+	dd if=/dev/zero of=$@ bs=1024 count=16 status=none
+
+# --- gosc bare-metal --------------------------------------------------------
+
+build/boot.o: guest/boot.s | build
+	$(NASM) $(NASMFLAGS) guest/boot.s -o $@
+
+build/kernel.o: guest/kernel.c $(ROM_HEADERS) | build
+	$(GUEST_CC) $(GUEST_CFLAGS) -c guest/kernel.c -o $@
+
+build/%.o: guest/%.c | build
+	$(GUEST_CC) $(GUEST_CFLAGS) -c $< -o $@
+
+build/c64_guest.elf: $(GUEST_OBJS) guest/linker_raw.ld
+	$(LD) $(LDFLAGS) -o $@ $(GUEST_OBJS)
+
+build/c64_guest.bin: build/c64_guest.elf
+	objcopy -O binary $< $@
+	@echo "[Makefile] c64_guest.bin: $$(stat -c%s $@) bajtow (limit RAM goscia: 524288)"
+
+# --- hipernadzorca hosta -----------------------------------------------------
+
+kvm_host: host/kvm_host.c host/diskimage.c host/diskimage.h
+	$(HOST_CC) $(HOST_CFLAGS) host/kvm_host.c host/diskimage.c -o $@ $(SDL2_LIBS)
+
+# --- uruchomienie ------------------------------------------------------------
+
+run: all
+	@echo "[Makefile] proba nadania uprawnien do /dev/kvm (moze zapytac o haslo sudo)..."
+	-sudo chmod a+rw /dev/kvm 2>/dev/null || true
+	./kvm_host build/c64_guest.bin disk
+
+clean:
+	rm -rf build kvm_host

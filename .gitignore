@@ -1,0 +1,40 @@
+# Artefakty budowania (regenerowane przez `make`/`make run`)
+/build/
+/kvm_host
+
+# Artefakty budowania narzedzia sidplayer (cc65/da65) - regenerowane, a
+# sidplayer.dbg zawiera bezwzgledna sciezke lokalnej maszyny (asminc/c64.inc)
+tools/sidplayer/32768
+tools/sidplayer/sidplayer.bin
+tools/sidplayer/sidplayer.o
+tools/sidplayer/sidplayer.dbg
+tools/sidplayer/sidplayer.lst
+tools/sidplayer/sidplayer.lbl
+tools/sidplayer/sidplayer.dis.s
+
+# Prywatny, chroniony prawem autorskim material (prawdziwe dumpy ROM,
+# obrazy dyskow i rypy muzyki z komercyjnych gier) - NIGDY nie publikowac.
+# Zobacz roms/README.md - `make` samo tworzy wypelnione zerami placeholdery,
+# jesli tych plikow brakuje, wiec repo dziala od razu bez nich.
+/priv/
+
+# ROM-y dostarczane samodzielnie przez uzytkownika (patrz roms/README.md) -
+# nie sa czescia repozytorium, niezaleznie od tego, gdzie akurat leza.
+roms/*.bin
+roms/*.zip
+roms/*backup*
+
+# Wygenerowany demo-kartridz (odtwarzalny przez tools/demo/build_demo.py)
+roms/sprite_sid_demo.bin
+
+# Obrazy dyskow/tasm i rypy SID - dane robocze/uzytkownika, nie zrodla
+disk/*.d64
+disk/*.d64.backup
+disk/*.t64
+disk/*.prg
+disk/*.sid
+
+# Smieci edytora/systemu
+*.swp
+*~
+.DS_Store
