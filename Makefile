@@ -17,11 +17,11 @@ LDFLAGS       := -m elf_i386 -T guest/linker_raw.ld -nostdlib
 HOST_CC       := gcc
 HOST_CFLAGS   := -O2 -Wall -Wextra
 
-# SDL2 (opcjonalnie): jesli jest dostepny `pkg-config sdl2`, kvm_host dostaje
-# prawdziwe okno interaktywne (obraz + klawiatura + dzwiek w jednym oknie,
-# patrz README "Uruchomienie z podgladem i dzwiekiem"). Bez niego kvm_host
-# buduje sie i dziala tak jak dotychczas - w pelni headless (terminal +
-# build/frame.ppm + build/audio.wav/fifo).
+# SDL2 (optional): if `pkg-config sdl2` is available, kvm_host gets a real
+# interactive window (video + keyboard + audio in one window, see README
+# "Running with preview and sound"). Without it, kvm_host builds and works
+# exactly as before - fully headless (terminal + build/frame.ppm +
+# build/audio.wav/fifo).
 SDL2_CFLAGS := $(shell pkg-config --cflags sdl2 2>/dev/null)
 SDL2_LIBS   := $(shell pkg-config --libs sdl2 2>/dev/null)
 ifneq ($(SDL2_LIBS),)
@@ -43,12 +43,11 @@ build:
 disk:
 	mkdir -p disk
 
-# --- ROM-y: konwersja roms/*.bin -> tablice C (xxd). Jesli plik ROM-u nie
-# zostal dostarczony przez uzytkownika (patrz roms/README.md - prawdziwe
-# dumpy KERNAL/BASIC/CHARGEN/Simons' BASIC sa materialem objetym prawami
-# autorskimi i nie sa czescia tego repozytorium), tworzony jest wypelniony
-# zerami placeholder o poprawnym rozmiarze, aby cala reszta pipeline'u dala
-# sie zbudowac i uruchomic od razu.
+# --- ROMs: converting roms/*.bin -> C arrays (xxd). If a ROM file wasn't
+# provided by the user (see roms/README.md - the real KERNAL/BASIC/
+# CHARGEN/Simons' BASIC dumps are copyrighted material and not part of
+# this repository), a zero-filled placeholder of the correct size is
+# created, so the rest of the pipeline can be built and run right away.
 
 build/rom_kernal.h: roms/kernal.bin | build
 	xxd -i -n rom_kernal_file roms/kernal.bin > $@
@@ -79,7 +78,7 @@ roms/simons.bin:
 	@echo "[Makefile] roms/simons.bin missing - Simons' BASIC will not be loaded (cartridge inactive)."
 	dd if=/dev/zero of=$@ bs=1024 count=16 status=none
 
-# --- gosc bare-metal --------------------------------------------------------
+# --- bare-metal guest --------------------------------------------------------
 
 build/boot.o: guest/boot.s | build
 	$(NASM) $(NASMFLAGS) guest/boot.s -o $@
@@ -97,12 +96,12 @@ build/c64_guest.bin: build/c64_guest.elf
 	objcopy -O binary $< $@
 	@echo "[Makefile] c64_guest.bin: $$(stat -c%s $@) bytes (guest RAM limit: 524288)"
 
-# --- hipernadzorca hosta -----------------------------------------------------
+# --- host hypervisor ---------------------------------------------------------
 
 kvm_host: host/kvm_host.c host/diskimage.c host/diskimage.h
 	$(HOST_CC) $(HOST_CFLAGS) host/kvm_host.c host/diskimage.c -o $@ $(SDL2_LIBS)
 
-# --- uruchomienie ------------------------------------------------------------
+# --- running -----------------------------------------------------------------
 
 run: all
 	@echo "[Makefile] attempting to grant permissions on /dev/kvm (may prompt for the sudo password)..."

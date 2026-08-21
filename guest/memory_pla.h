@@ -18,7 +18,7 @@
 
 void pla_reset(void);
 
-/* Wymagane przez fake6502.c: */
+/* Required by fake6502.c: */
 uint8_t fake6502_mem_read(fake6502_context *c, uint16_t address);
 void    fake6502_mem_write(fake6502_context *c, uint16_t address, uint8_t val);
 

@@ -18,7 +18,7 @@
 
 void reu_reset(void);
 
-uint8_t reu_reg_read(uint8_t offset);   /* offset wzgledem $DF00, 0x00-0x1F */
+uint8_t reu_reg_read(uint8_t offset);   /* offset relative to $DF00, 0x00-0x1F */
 void    reu_reg_write(uint8_t offset, uint8_t value);
 
 bool reu_irq_pending(void);

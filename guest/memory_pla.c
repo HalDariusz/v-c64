@@ -30,18 +30,18 @@ uint8_t cpu_port_pr;
 
 uint8_t cpu_port_effective(void)
 {
-    /* Bity nieskonfigurowane jako wyjscie "plywaja" wysoko (podciagniecie),
-     * tak jak na prawdziwym 6510. */
+    /* Bits not configured as output "float" high (pull-up), just like on
+     * a real 6510. */
     return (uint8_t)((cpu_port_pr & cpu_port_ddr) | (uint8_t)(~cpu_port_ddr));
 }
 
 void pla_reset(void)
 {
-    cpu_port_ddr = 0x2F; /* domyslny stan po resecie KERNAL-a */
-    cpu_port_pr  = 0x37; /* LORAM=HIRAM=CHAREN=1 -> wszystkie ROM-y + I/O widoczne */
+    cpu_port_ddr = 0x2F; /* default state after a KERNAL reset */
+    cpu_port_pr  = 0x37; /* LORAM=HIRAM=CHAREN=1 -> all ROMs + I/O visible */
 }
 
-/* Dostep do przestrzeni I/O $D000-$DFFF, widoczny gdy CHAREN=1. */
+/* Access to the I/O space $D000-$DFFF, visible when CHAREN=1. */
 static uint8_t io_read(uint16_t address)
 {
     if (address <= 0xD3FF) return vic2_reg_read((uint8_t)(address & 0x3F));
@@ -50,7 +50,7 @@ static uint8_t io_read(uint16_t address)
     if (address <= 0xDCFF) return cia1_reg_read((uint8_t)(address & 0x0F));
     if (address <= 0xDDFF) return cia2_reg_read((uint8_t)(address & 0x0F));
     if (address <= 0xDEFF) return cartridge_io1_read(address);
-    /* $DF00-$DFFF: REU pod $DF00-$DF1F, reszta nieprzypisana (open bus). */
+    /* $DF00-$DFFF: REU at $DF00-$DF1F, the rest is unassigned (open bus). */
     if (address <= 0xDF1F) return reu_reg_read((uint8_t)(address - 0xDF00));
     return 0xFF;
 }
@@ -81,12 +81,12 @@ uint8_t fake6502_mem_read(fake6502_context *c, uint16_t address)
     bool exrom  = cartridge_exrom_line();
 
     if (address >= 0x8000 && address <= 0x9FFF) {
-        if (!game || !exrom) return cartridge_read_lorom(address); /* LOROM aktywny */
+        if (!game || !exrom) return cartridge_read_lorom(address); /* LOROM active */
         return c64_ram[address];
     }
 
     if (address >= 0xA000 && address <= 0xBFFF) {
-        if (!game && exrom) return cartridge_read_hirom(address);  /* tryb 16K */
+        if (!game && exrom) return cartridge_read_hirom(address);  /* 16K mode */
         if (loram && hiram) return rom_basic[address - 0xA000];
         return c64_ram[address];
     }
@@ -98,10 +98,10 @@ uint8_t fake6502_mem_read(fake6502_context *c, uint16_t address)
 
     if (address >= 0xE000) {
         if (hiram) {
-            /* Autostart kartridza: jesli obecny jest kartridz z prawidlowa
-             * sygnatura "CBM80", wektor RESET 6502 wskazuje na jego
-             * cold-start zamiast na normalny start KERNAL-a - dokladnie
-             * tak, jak realny KERNAL C64 sam by to wykryl i przekierowal. */
+            /* Cartridge autostart: if a cartridge with a valid "CBM80"
+             * signature is present, the 6502 RESET vector points to its
+             * cold-start routine instead of the normal KERNAL boot - just
+             * like a real C64 KERNAL would detect and redirect it itself. */
             uint16_t cart_vec;
             if ((address == 0xFFFC || address == 0xFFFD) &&
                 cartridge_autostart_vector(&cart_vec)) {
@@ -122,15 +122,15 @@ void fake6502_mem_write(fake6502_context *c, uint16_t address, uint8_t val)
 
     if (address <= 0x0001) {
         if (address == 0x0000) cpu_port_ddr = val; else cpu_port_pr = val;
-        c64_ram[address] = val; /* zapis widoczny takze przy odczycie surowej RAM (np. przez REU) */
+        c64_ram[address] = val; /* write also visible to raw RAM reads (e.g. via the REU) */
         return;
     }
 
     uint8_t port = cpu_port_effective();
     bool charen = (port & CPU_PORT_CHAREN) != 0;
 
-    /* RAM pod bankowanymi oknami ROM/kartridza jest zawsze zapisywalna
-     * (tak jak na prawdziwym C64 - ROM/I-O tylko przeslania odczyt). */
+    /* RAM under the banked ROM/cartridge windows is always writable
+     * (just like on a real C64 - ROM/I-O only shadows the read side). */
     if (address >= 0xD000 && address <= 0xDFFF && charen) {
         io_write(address, val);
         return;

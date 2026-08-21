@@ -16,7 +16,7 @@ OPS_IMM = {  # opcode nn
     'LDA': 0xA9, 'LDX': 0xA2, 'LDY': 0xA0, 'CMP': 0xC9, 'CPX': 0xE0,
     'CPY': 0xC0, 'AND': 0x29,
 }
-OPS_ZP = {  # opcode nn (adresowanie strony zerowej)
+OPS_ZP = {  # opcode nn (zero-page addressing)
     'LDA': 0xA5, 'STA': 0x85, 'INC': 0xE6, 'DEC': 0xC6, 'CMP': 0xC5,
     'LDX': 0xA6, 'LDY': 0xA4, 'STX': 0x86, 'STY': 0x84,
 }
@@ -65,7 +65,7 @@ class Asm:
         raise ValueError(item)
 
     def assemble(self):
-        # przebieg 1: policz adresy etykiet
+        # pass 1: compute label addresses
         addr = self.origin
         for item in self.lines:
             if item[0] == 'label':
@@ -74,7 +74,7 @@ class Asm:
                 addr += self._size_of(item)
         end_addr = addr
 
-        # przebieg 2: emituj bajty
+        # pass 2: emit bytes
         out = bytearray()
         addr = self.origin
         for item in self.lines:

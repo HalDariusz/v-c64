@@ -12,9 +12,9 @@
 #include "sid.h"
 #include "libc_shim.h"
 
-/* Tabele czasow narastania (attack) i opadania (decay/release) w ms,
- * indeksowane 4-bitowa wartoscia rejestru - wartosci wg opublikowanej
- * charakterystyki ukladu SID 6581 (dane techniczne, jawnodostepne). */
+/* Attack and decay/release time tables in ms, indexed by the 4-bit
+ * register value - values per the published SID 6581 characteristics
+ * (publicly available technical data). */
 static const double attack_ms[16] = {
     2, 8, 16, 24, 38, 56, 68, 80, 100, 250, 500, 800, 1000, 3000, 5000, 8000
 };
@@ -25,7 +25,7 @@ static const double decay_release_ms[16] = {
 typedef enum { ENV_ATTACK, ENV_DECAY, ENV_SUSTAIN, ENV_RELEASE, ENV_IDLE } env_state_t;
 
 typedef struct {
-    double phase;        /* 0.0 - 1.0, pozycja w cyklu fali */
+    double phase;        /* 0.0 - 1.0, position within the waveform cycle */
     uint32_t noise_lfsr;
     double envelope;      /* 0.0 - 1.0 */
     env_state_t env_state;
@@ -59,8 +59,8 @@ uint8_t sid_reg_read(uint8_t offset)
 {
     offset &= 0x1F;
     switch (offset) {
-        case 0x19: case 0x1A: return 0xFF; /* potencjometry - brak podlaczonego joysticka analog. */
-        case 0x1B: return (uint8_t)(voice[2].noise_lfsr & 0xFF); /* Osc3 - odczyt "losowy" */
+        case 0x19: case 0x1A: return 0xFF; /* potentiometers - no analog joystick connected */
+        case 0x1B: return (uint8_t)(voice[2].noise_lfsr & 0xFF); /* Osc3 - "random" readback */
         case 0x1C: return (uint8_t)(voice[2].envelope * 255.0);  /* Env3 */
     }
     if (offset < 0x19) return regs[offset];
@@ -73,19 +73,19 @@ void sid_reg_write(uint8_t offset, uint8_t value)
     if (offset < 0x19) regs[offset] = value;
 }
 
-/* --- generacja fali dla jednego glosu ------------------------------------ */
+/* --- waveform generation for a single voice ------------------------------ */
 
 static double gen_waveform(int v, uint16_t freq)
 {
     uint8_t ctrl = voice_ctrl(v);
-    if (ctrl & 0x08) return 0.0; /* TEST: akumulator fazy zatrzymany */
+    if (ctrl & 0x08) return 0.0; /* TEST: phase accumulator held */
 
-    /* Priorytet przy kilku jednoczesnie ustawionych bitach fali - realny SID
-     * generuje egzotyczne fale mieszane analogowo; tutaj wybieramy jedna,
-     * w kolejnosci najbardziej charakterystycznej dla typowego uzycia. */
+    /* Priority when several waveform bits are set at once - a real SID
+     * produces exotic waveforms mixed in the analog domain; here we pick
+     * one, in the order most characteristic of typical usage. */
     if (ctrl & 0x80) { /* NOISE */
-        /* LFSR przesuwany raz na probke - przyblizenie, nie jest cyklowo
-         * zsynchronizowany z rejestrem czestotliwosci jak w oryginale. */
+        /* LFSR shifted once per sample - an approximation, not cycle-
+         * synchronized with the frequency register like the original. */
         uint32_t *lfsr = &voice[v].noise_lfsr;
         uint32_t bit = ((*lfsr >> 22) ^ (*lfsr >> 17)) & 1u;
         *lfsr = ((*lfsr << 1) | bit) & 0x7FFFFFu;
@@ -99,11 +99,11 @@ static double gen_waveform(int v, uint16_t freq)
     if (ctrl & 0x20) { /* SAWTOOTH */
         return voice[v].phase * 2.0 - 1.0;
     }
-    if (ctrl & 0x10) { /* TRIANGLE (+ przyblizony ring-mod z glosu 3) */
+    if (ctrl & 0x10) { /* TRIANGLE (+ approximate ring-mod from voice 3) */
         double tri = (voice[v].phase < 0.5)
                        ? (voice[v].phase * 4.0 - 1.0)
                        : (3.0 - voice[v].phase * 4.0);
-        if ((ctrl & 0x04) && v != 2) { /* RING MOD: modulacja glosem 3 */
+        if ((ctrl & 0x04) && v != 2) { /* RING MOD: modulated by voice 3 */
             double s3 = (voice[2].phase < 0.5) ? 1.0 : -1.0;
             tri *= s3;
         }
@@ -173,7 +173,7 @@ int16_t sid_generate_sample(void)
         advance_envelope(v);
 
         if (v == 2 && (mode_vol & 0x80) && !(resfilt & 0x04)) {
-            continue; /* glos 3 odlaczony od wyjscia (i nie idzie przez filtr) */
+            continue; /* voice 3 disconnected from the output (and bypasses the filter) */
         }
 
         double sample = gen_waveform(v, freq) * voice[v].envelope;
@@ -181,9 +181,9 @@ int16_t sid_generate_sample(void)
         else mixed_dry += sample;
     }
 
-    /* Uproszczony filtr state-variable (Chamberlin). Wspolczynnik f jest
-     * przyblizeniem "malego kata" 2*sin(pi*fc/fs) bez uzycia funkcji
-     * transcendentnych (brak libm w srodowisku freestanding). */
+    /* Simplified state-variable filter (Chamberlin). Coefficient f is a
+     * "small angle" approximation of 2*sin(pi*fc/fs), avoiding
+     * transcendental functions (no libm in the freestanding environment). */
     uint16_t fc = (uint16_t)(((regs[0x16] << 3) | (regs[0x15] & 0x07)) & 0x7FF);
     double cutoff_hz = 30.0 + ((double)fc / 2047.0) * (12000.0 - 30.0);
     double f = 2.0 * 3.14159265358979 * cutoff_hz * DT;

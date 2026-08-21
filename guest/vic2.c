@@ -20,15 +20,15 @@ static uint8_t regs[0x40];
 static uint16_t raster_line;
 static int line_cycle_acc;
 static uint16_t raster_irq_compare;
-static uint8_t sprite_fg_collision;   /* akumulowane w trakcie klatki */
+static uint8_t sprite_fg_collision;   /* accumulated over the frame */
 static uint8_t sprite_sprite_collision;
 
-/* Maska "ta komorka to piksel pierwszoplanowy" dla calego ekranu - potrzebna
- * do priorytetu sprite/tlo oraz kolizji sprite-tlo. */
+/* "This cell is a foreground pixel" mask for the whole screen - needed
+ * for sprite/background priority and sprite-background collision. */
 static uint8_t fg_mask[VIC2_SCREEN_W * VIC2_SCREEN_H];
-/* bitmaska (bity 0-7 = sprite 0-7) sprite'ow, ktore juz narysowaly
- * niepusty piksel w danej komorce w trakcie biezacej klatki - do wykrywania
- * kolizji sprite-sprite. */
+/* Bitmask (bits 0-7 = sprite 0-7) of sprites that have already drawn a
+ * non-transparent pixel in a given cell during the current frame - used
+ * to detect sprite-sprite collisions. */
 static uint8_t sprite_hit_mask[VIC2_SCREEN_W * VIC2_SCREEN_H];
 
 #define REG(x) (regs[(x)])
@@ -43,11 +43,11 @@ void vic2_reset(void)
     raster_irq_compare = 0;
     sprite_fg_collision = 0;
     sprite_sprite_collision = 0;
-    REG(0x11) = 0x1B; /* DEN=1, RSEL=1, YSCROLL=3 - stan typowy po resecie */
+    REG(0x11) = 0x1B; /* DEN=1, RSEL=1, YSCROLL=3 - typical state after reset */
     REG(0x16) = 0xC8; /* CSEL=1, XSCROLL=0 */
-    REG(0x18) = 0x14; /* domyslny wskaznik VM=$0400, CB=$1000 (wzgledem banku) */
-    REG(0x20) = 14;   /* jasnoniebieska ramka - domyslny kolor C64 po resecie */
-    REG(0x21) = 6;    /* niebieskie tlo */
+    REG(0x18) = 0x14; /* default pointers VM=$0400, CB=$1000 (relative to the bank) */
+    REG(0x20) = 14;   /* light blue border - default C64 color after reset */
+    REG(0x21) = 6;    /* blue background */
 }
 
 uint8_t vic2_reg_read(uint8_t offset)
@@ -56,7 +56,7 @@ uint8_t vic2_reg_read(uint8_t offset)
     switch (offset) {
         case 0x12: return (uint8_t)(raster_line & 0xFF);
         case 0x11: return (uint8_t)((REG(0x11) & 0x7F) | ((raster_line & 0x100) ? 0x80 : 0));
-        case 0x19: return (uint8_t)(REG(0x19) | 0x70); /* niezdefiniowane bity = 1 */
+        case 0x19: return (uint8_t)(REG(0x19) | 0x70); /* undefined bits = 1 */
         case 0x1E: { uint8_t v = sprite_sprite_collision; sprite_sprite_collision = 0; return v; }
         case 0x1F: { uint8_t v = sprite_fg_collision; sprite_fg_collision = 0; return v; }
     }
@@ -76,14 +76,14 @@ void vic2_reg_write(uint8_t offset, uint8_t value)
             raster_irq_compare = (uint16_t)((raster_irq_compare & 0x100) | value);
             break;
         case 0x19:
-            REG(0x19) &= (uint8_t)~(value & 0x0F); /* zapis 1 kasuje odpowiedni bit */
+            REG(0x19) &= (uint8_t)~(value & 0x0F); /* writing a 1 clears the corresponding bit */
             break;
         case 0x1A:
             REG(0x1A) = (uint8_t)(value & 0x0F);
             break;
         case 0x1E:
         case 0x1F:
-            break; /* rejestry kolizji tylko do odczytu */
+            break; /* collision registers are read-only */
         default:
             if (offset <= 0x2E) REG(offset) = value;
             break;
@@ -97,7 +97,7 @@ bool vic2_irq_pending(void)
 
 uint16_t vic2_current_raster_line(void) { return raster_line; }
 
-/* --- dostep do pamieci widzianej przez VIC-II (z podmiana CHARGEN) ------ */
+/* --- memory access as seen by VIC-II (with CHARGEN shadowing) ----------- */
 
 static uint8_t vic2_read_mem(uint16_t bank_base, uint16_t local_addr)
 {
@@ -110,7 +110,7 @@ static uint8_t vic2_read_mem(uint16_t bank_base, uint16_t local_addr)
     return c64_ram[abs_addr];
 }
 
-/* --- renderowanie pola tekstu/bitmapy ----------------------------------- */
+/* --- text/bitmap field rendering ----------------------------------------- */
 
 static void render_char_bitmap_layer(uint16_t bank_base)
 {
@@ -232,7 +232,7 @@ static void render_char_bitmap_layer(uint16_t bank_base)
     }
 }
 
-/* --- sprite'y ------------------------------------------------------------ */
+/* --- sprites -------------------------------------------------------------- */
 
 static void render_sprites(uint16_t bank_base)
 {
@@ -255,7 +255,7 @@ static void render_sprites(uint16_t bank_base)
         uint8_t ptr = vic2_read_mem(bank_base, (uint16_t)(vm_base + 0x3F8 + s));
         uint16_t data_base = (uint16_t)(ptr * 64);
 
-        int screen_x0 = x - 24; /* offset standardowy sprite'ow C64 wzgledem widocznego okna */
+        int screen_x0 = x - 24; /* standard C64 sprite offset relative to the visible window */
         int screen_y0 = y - 50;
 
         for (int ln = 0; ln < 21; ln++) {
@@ -312,7 +312,7 @@ static void render_frame(void)
     uint8_t bank = cia2_vic_bank();
     uint16_t bank_base = (uint16_t)(bank * 0x4000);
 
-    if (!(REG(0x11) & 0x10)) { /* DEN=0: ekran wylaczony, samo obramowanie */
+    if (!(REG(0x11) & 0x10)) { /* DEN=0: display off, border only */
         memset(vic2_framebuffer, (uint8_t)(REG(0x20) & 0x0F), sizeof(vic2_framebuffer));
         memset(fg_mask, 0, sizeof(fg_mask));
         return;

@@ -27,7 +27,7 @@ global _start
 extern kernel_main
 
 MB_MAGIC    equ 0x1BADB002
-MB_FLAGS    equ 0x00000004      ; bit2: prosba o tryb graficzny
+MB_FLAGS    equ 0x00000004      ; bit2: request a graphics mode
 MB_CHECKSUM equ -(MB_MAGIC + MB_FLAGS)
 
 _start:
@@ -38,7 +38,7 @@ mb_header:
     dd MB_MAGIC
     dd MB_FLAGS
     dd MB_CHECKSUM
-    dd 0            ; mode_type: 0 = linear graphics (nie tekstowy)
+    dd 0            ; mode_type: 0 = linear graphics (not text mode)
     dd 320          ; width
     dd 200          ; height
     dd 8            ; depth (bpp)
@@ -49,10 +49,10 @@ real_start:
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7000          ; tymczasowy stos trybu rzeczywistego
+    mov sp, 0x7000          ; temporary real-mode stack
 
-    ; Fast A20 gate - nieszkodliwe nawet gdy KVM juz udostepnia pelna
-    ; przestrzen adresowa bez maskowania A20.
+    ; Fast A20 gate - harmless even when KVM already exposes the full
+    ; address space with no A20 masking.
     in al, 0x92
     or al, 0x02
     out 0x92, al
@@ -65,10 +65,10 @@ real_start:
 
     jmp CODE_SEG:protected_start
 
-; --- GDT: plaski model pamieci 4 GB (kod + dane) ---------------------------
+; --- GDT: flat 4 GB memory model (code + data) -----------------------------
 align 8
 gdt_start:
-    dq 0x0000000000000000              ; deskryptor zerowy
+    dq 0x0000000000000000              ; null descriptor
 gdt_code:
     dw 0xFFFF, 0x0000
     db 0x00, 10011010b, 11001111b, 0x00
@@ -84,7 +84,7 @@ gdt_descriptor:
 CODE_SEG equ gdt_code - gdt_start
 DATA_SEG equ gdt_data - gdt_start
 
-; --- kod 32-bitowy ----------------------------------------------------------
+; --- 32-bit code ------------------------------------------------------------
 BITS 32
 protected_start:
     mov ax, DATA_SEG
@@ -95,9 +95,9 @@ protected_start:
     mov ss, ax
     mov esp, stack_top
 
-    mov dword [mb_info + 0], 0x2BADB002    ; magic (jak w rejestrze EAX Multiboot)
+    mov dword [mb_info + 0], 0x2BADB002    ; magic (same as the Multiboot EAX register)
     mov dword [mb_info + 4], MB_FLAGS
-    mov dword [mb_info + 8], 0x000A0000    ; framebuffer_addr - VRAM hosta
+    mov dword [mb_info + 8], 0x000A0000    ; framebuffer_addr - host VRAM
     mov dword [mb_info + 12], 320          ; framebuffer_width
     mov dword [mb_info + 16], 200          ; framebuffer_height
     mov dword [mb_info + 20], 8            ; framebuffer_bpp
@@ -112,13 +112,13 @@ hang:
 section .bss
 align 16
 stack_bottom:
-    resb 16384          ; 16 KB stosu, jak wymaga specyfikacja
+    resb 16384          ; 16 KB of stack, as required by the spec
 stack_top:
 
 align 4
 mb_info:
     resb 24
 
-; Wylacza domysly executable stack marker w obiekcie ELF (kosmetyczne -
-; nie ma tu w ogole stronicowania/NX, ale wycisza ostrzezenie linkera).
+; Disables the default executable-stack marker in the ELF object (cosmetic -
+; there's no paging/NX here at all, but it silences the linker warning).
 section .note.GNU-stack noalloc noexec nowrite progbits

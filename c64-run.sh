@@ -48,11 +48,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- zywy dzwiek: FIFO + aplay. Musi wystartowac PRZED kvm_host, bo
-# kvm_host otwiera FIFO do zapisu w trybie nonblock - to sie uda tylko
-# jesli po drugiej stronie juz czeka czytelnik (aplay). Bez tego kroku
-# dzialanie i tak jest poprawne, tylko bez zywego odsluchu (jest za to
-# zawsze kompletny build/audio.wav po zakonczeniu - patrz README). ---
+# --- live audio: FIFO + aplay. Must start BEFORE kvm_host, since
+# kvm_host opens the FIFO for writing in non-blocking mode - that only
+# succeeds if a reader (aplay) is already waiting on the other end.
+# Without this step, the run is still correct, just without live
+# playback (a complete build/audio.wav is always produced after the run
+# ends anyway - see README). ---
 if command -v aplay >/dev/null 2>&1; then
     rm -f build/audio.fifo
     mkfifo build/audio.fifo
@@ -63,8 +64,8 @@ else
     echo "[c64-run] 'aplay' not found - skipping live audio (only build/audio.wav will remain)"
 fi
 
-# --- zywy podglad obrazu: ImageMagick "display -update", odswieza sam
-# siebie gdy build/frame.ppm sie zmieni. ---
+# --- live video preview: ImageMagick "display -update", refreshes
+# itself when build/frame.ppm changes. ---
 if command -v display >/dev/null 2>&1 && [ -n "$DISPLAY" ]; then
     ( sleep 1; exec display -update 0.5 build/frame.ppm ) &
     BG_PIDS+=("$!")
@@ -73,7 +74,7 @@ else
     echo "[c64-run] 'display' (ImageMagick) unavailable, or \$DISPLAY not set - skipping live video preview"
 fi
 
-# --- kvm_host w nowym oknie terminala (do wpisywania na klawiaturze C64) ---
+# --- kvm_host in a new terminal window (for typing on the C64 keyboard) ---
 RUN_CMD="./kvm_host build/c64_guest.bin '$DISK_DIR'; echo; echo '[c64-run] guest has shut down. Press Enter to close the window.'; read"
 
 TERM_BIN=""

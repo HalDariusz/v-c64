@@ -20,15 +20,15 @@
 #include <strings.h>
 #include <dirent.h>
 
-/* Bezpieczny gorny limit na rozmiar wczytywanego obrazu (dysk/tasma nie
- * powinny byc wieksze niz kilka MB - to zabezpieczenie przed przypadkowym
- * wczytaniem czegos innego / bardzo duzego pliku o pasujacym rozszerzeniu). */
+/* Safe upper bound on the size of a loaded image (a disk/tape shouldn't
+ * be bigger than a few MB - this guards against accidentally loading
+ * something else / a very large file with a matching extension). */
 #define IMG_MAX_SIZE (8L * 1024 * 1024)
 
 /* ---------------------------------------------------------------------- *
- * Dopasowanie nazwy z wildcardami jak w prawdziwym KERNAL-u: "*" napotkane
- * w dowolnym miejscu wzorca dopasowuje cala reszte nazwy (wiec samo "*"
- * oznacza "pierwszy plik"), a "?" dopasowuje dokladnie jeden dowolny znak.
+ * Name matching with wildcards as in the real KERNAL: a "*" encountered
+ * anywhere in the pattern matches the rest of the name (so plain "*"
+ * means "first file"), and "?" matches exactly one arbitrary character.
  * ---------------------------------------------------------------------- */
 static int name_matches(const char *entry, size_t entry_len, const char *want)
 {
@@ -46,29 +46,28 @@ static int name_matches(const char *entry, size_t entry_len, const char *want)
 }
 
 /* ---------------------------------------------------------------------- *
- * D64 - standardowy obraz 35-sciezkowy (174848 B); tolerowany przy
- * odczycie takze rzadszy 40-sciezkowy wariant (196608 B) oraz dopisane na
- * koncu bajty informacji o bledach sektorow - uklad danych na sciezkach
- * 1-35 sie od tego nie zmienia. ZAPIS (SAVE) jest celowo ograniczony do
- * scisle standardowego 35-sciezkowego rozmiaru - to jedyny uklad BAM,
- * jaki ten kod umie bezpiecznie modyfikowac (patrz uczciwe uproszczenia
- * w README.md).
+ * D64 - standard 35-track image (174848 B); on read, the rarer 40-track
+ * variant (196608 B) is also tolerated, as are trailing sector-error-info
+ * bytes appended at the end - the data layout on tracks 1-35 doesn't
+ * change because of that. WRITING (SAVE) is deliberately restricted to
+ * the strictly standard 35-track size - that's the only BAM layout this
+ * code can safely modify (see the honest simplifications in README.md).
  *
- * Katalog: BAM (blok alokacji) lezy w T18/S0. Jego pierwsze dwa bajty
- * wskazuja T/S pierwszego bloku katalogu. Kazdy blok katalogu ma 8 wpisow
- * po 32 bajty: [0]=typ pliku (bit7=zamkniety,bit6=zablokowany,dolne 4
- * bity=SEQ/PRG/USR/REL), [1..2]=T/S pierwszego sektora danych,
- * [3..18]=nazwa (PETSCII, dopelniona bajtem $A0), [28..29]=rozmiar w
- * blokach (LE). Sam BAM: offset 4+(sciezka-1)*4 = [wolne_sektory,
- * bitmapa_24bit (bit=1 -> wolny)], offset 0x90 = nazwa dysku (16B, $A0),
- * offset 0xA2 = ID dysku (2B).
+ * Directory: the BAM (block availability map) lives at T18/S0. Its first
+ * two bytes point to the T/S of the first directory block. Each
+ * directory block has 8 entries of 32 bytes: [0]=file type
+ * (bit7=closed,bit6=locked,low 4 bits=SEQ/PRG/USR/REL), [1..2]=T/S of the
+ * first data sector, [3..18]=name (PETSCII, padded with byte $A0),
+ * [28..29]=size in blocks (LE). The BAM itself: offset 4+(track-1)*4 =
+ * [free_sectors, 24-bit bitmap (bit=1 -> free)], offset 0x90 = disk name
+ * (16B, $A0-padded), offset 0xA2 = disk ID (2B).
  * ---------------------------------------------------------------------- */
 
 #define D64_SIZE_35    174848
 #define D64_SIZE_40    196608
 #define D64_BAM_TRACK  18
 #define D64_BAM_SECTOR 0
-#define D64_MAX_ENTRIES 144 /* 18 sektorow katalogu * 8 wpisow - gorny limit na sciezce 18 */
+#define D64_MAX_ENTRIES 144 /* 18 directory sectors * 8 entries - upper bound on track 18 */
 
 static int d64_spt(int track)
 {
@@ -100,11 +99,11 @@ static const char *d64_filetype_str(uint8_t t)
 
 typedef struct {
     uint8_t type;
-    int track, sector;          /* pierwszy sektor danych */
+    int track, sector;          /* first data sector */
     char name[17];
     int name_len;
     int blocks;
-    int slot_track, slot_sector, slot_index; /* polozenie WPISU katalogowego */
+    int slot_track, slot_sector, slot_index; /* location of the DIRECTORY ENTRY itself */
 } d64_dirent_t;
 
 static int d64_read_all_entries(const uint8_t *img, size_t img_size, d64_dirent_t *out, int max_out)
@@ -121,7 +120,7 @@ static int d64_read_all_entries(const uint8_t *img, size_t img_size, d64_dirent_
         for (int i = 0; i < 8 && n < max_out; i++) {
             const uint8_t *entry = sec + 2 + i * 32;
             uint8_t ftype = entry[0];
-            if ((ftype & 0x0F) == 0) continue; /* pusty/skasowany wpis */
+            if ((ftype & 0x0F) == 0) continue; /* empty/deleted entry */
             d64_dirent_t *de = &out[n];
             de->type = ftype;
             de->track = entry[1];
@@ -178,28 +177,28 @@ static uint8_t *d64_find(const uint8_t *img, size_t img_size, const char *name, 
     return NULL;
 }
 
-/* dopisuje jedna "linie" listingu katalogu obrazu D64 do bufora danych
- * BASIC-owego pseudo-programu (patrz listing_emit_line nizej) */
+/* appends one "line" of a D64 image directory listing to the BASIC
+ * pseudo-program's data buffer (see listing_emit_line below) */
 static void d64_build_listing(const uint8_t *img, size_t img_size, const char *pattern,
                                uint8_t *data, size_t *pos, size_t cap);
 
 /* ---------------------------------------------------------------------- *
- * T64 - "obraz tasmy" wymyslony przez autorow emulatorow: bezposredni
- * katalog wpisow (bez GCR/przebiegu sygnalu), kazdy wpis wskazuje wprost
- * offset danych w pliku. Naglowek 64 B, wpisy katalogu po 32 B zaczynaja
- * sie od offsetu 64: [0]=typ wpisu C64s (0=wolny,1=zwykly plik),
- * [2..3]=adres poczatkowy LE, [4..5]=adres koncowy LE, [8..11]=offset
- * danych w pliku (LE, 32-bit), [16..31]=nazwa (PETSCII, dopelniona $20).
+ * T64 - a "tape image" invented by emulator authors: a direct entry
+ * directory (no GCR/signal timing), each entry pointing straight to a
+ * data offset in the file. 64 B header, 32 B directory entries starting
+ * at offset 64: [0]=C64s entry type (0=free,1=normal file),
+ * [2..3]=start address LE, [4..5]=end address LE, [8..11]=data offset in
+ * the file (LE, 32-bit), [16..31]=name (PETSCII, padded with $20).
  *
- * Celowo TYLKO DO ODCZYTU: T64 zostal pomyslany jako format dystrybucji
- * gotowych zrzutow (jego katalog ma z gory ustalona, zwykle bardzo
- * ciasna, liczbe wpisow - dopisanie nowego pliku wymagaloby przesuniecia
- * calej reszty danych w pliku), a nie jako zapisywalny nosnik - w
- * przeciwienstwie do D64 to nie jest realistyczny model prawdziwej
- * tasmy/napedu, wiec nie ma sensu udawac tu pelnej symetrii z SAVE.
+ * Deliberately READ ONLY: T64 was designed as a distribution format for
+ * ready-made dumps (its directory has a fixed, usually very tight, number
+ * of entries decided up front - appending a new file would require
+ * shifting the rest of the file's data), not as a writable medium -
+ * unlike D64, this isn't a realistic model of a real tape/drive, so
+ * there's no point pretending it can fully mirror SAVE here.
  * ---------------------------------------------------------------------- */
 
-#define T64_MAX_ENTRIES 500 /* zabezpieczenie przed nierealistycznie duzym naglowkiem */
+#define T64_MAX_ENTRIES 500 /* guard against an unrealistically large header */
 
 static uint8_t *t64_find(const uint8_t *img, size_t img_size, const char *name, size_t *out_len)
 {
@@ -215,7 +214,7 @@ static uint8_t *t64_find(const uint8_t *img, size_t img_size, const char *name, 
         if ((size_t)(eoff + 32) > img_size) break;
         const uint8_t *e = img + eoff;
 
-        if (e[0] == 0) continue; /* wolny wpis */
+        if (e[0] == 0) continue; /* free entry */
 
         uint16_t start = (uint16_t)(e[2] | (e[3] << 8));
         uint16_t end   = (uint16_t)(e[4] | (e[5] << 8));
@@ -249,14 +248,14 @@ static void t64_build_listing(const uint8_t *img, size_t img_size, const char *p
                                uint8_t *data, size_t *pos, size_t cap);
 
 /* ---------------------------------------------------------------------- *
- * Wspolna budowa listingu katalogu (uzywana przez diskimage_directory_listing)
+ * Shared directory-listing construction (used by diskimage_directory_listing)
  * ---------------------------------------------------------------------- */
 
-/* Dopisuje jedna "linie" BASIC-owego programu listingu katalogu do bufora
- * (format uzywany przez prawdziwy KERNAL dla LOAD"$",8 + LIST):
- * [wskaznik_nastepnej_linii LE][numer_linii LE][tekst...][0x00]. Wskaznik
- * nastepnej linii jest PELNYM adresem pamieci (bufor zaczyna sie zawsze od
- * $0801), wiec trzeba go doliczyc na biezaco w trakcie budowania. */
+/* Appends one "line" of the directory-listing BASIC program to the buffer
+ * (the format the real KERNAL uses for LOAD"$",8 + LIST):
+ * [next_line_pointer LE][line_number LE][text...][0x00]. The next-line
+ * pointer is a FULL memory address (the buffer always starts at $0801),
+ * so it has to be computed on the fly as the buffer is built. */
 static void listing_emit_line(uint8_t *data, size_t *pos, uint16_t line_number,
                                const char *text, size_t text_len)
 {
@@ -359,10 +358,10 @@ static void t64_build_listing(const uint8_t *img, size_t img_size, const char *p
 }
 
 /* ---------------------------------------------------------------------- *
- * D64 - zapis (SAVE): alokacja sektorow danych z BAM, wpis katalogowy,
- * ewentualne zwolnienie starego lancucha przy nadpisaniu istniejacego
- * pliku, ewentualne doalokowanie nowego sektora katalogu na sciezce 18,
- * gdy istniejace sektory katalogu sa pelne.
+ * D64 - writing (SAVE): allocating data sectors from the BAM, the
+ * directory entry, freeing the old chain when overwriting an existing
+ * file, and allocating a new directory sector on track 18 if the
+ * existing directory sectors are full.
  * ---------------------------------------------------------------------- */
 
 static void d64_free_chain(uint8_t *img, long bam_off, int t, int s)
@@ -383,9 +382,9 @@ static void d64_free_chain(uint8_t *img, long bam_off, int t, int s)
     }
 }
 
-/* Szuka wolnego sektora na dowolnej sciezce danych (1-35, z pominieciem
- * zarezerwowanej na katalog sciezki 18). Zwraca 1 i alokuje (czysci bit w
- * BAM, zmniejsza licznik) przy sukcesie. */
+/* Looks for a free sector on any data track (1-35, skipping track 18,
+ * reserved for the directory). Returns 1 and allocates it (clears the
+ * bit in the BAM, decrements the counter) on success. */
 static int d64_alloc_sector(uint8_t *img, long bam_off, int *out_t, int *out_s)
 {
     for (int t = 1; t <= 35; t++) {
@@ -407,9 +406,9 @@ static int d64_alloc_sector(uint8_t *img, long bam_off, int *out_t, int *out_s)
     return 0;
 }
 
-/* Jak wyzej, ale ograniczone do sciezki katalogowej 18 (sektor 0 to sam
- * BAM, nigdy nie alokowany) - uzywane wylacznie do rozszerzenia lancucha
- * sektorow katalogu, gdy wszystkie istniejace sa pelne. */
+/* As above, but restricted to directory track 18 (sector 0 is the BAM
+ * itself, never allocated) - used only to extend the directory sector
+ * chain when all existing sectors are full. */
 static int d64_alloc_dir_sector(uint8_t *img, long bam_off, int *out_t, int *out_s)
 {
     uint8_t *bament = img + bam_off + 4 + (D64_BAM_TRACK - 1) * 4;
@@ -433,10 +432,10 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
 {
     if (img_size < D64_SIZE_35) return 0;
     if (data_len < 2 || data_len > 65536) return 0;
-    /* UWAGA: adres zaladowania (pierwsze 2 bajty "data") NIE jest osobnymi
-     * metadanymi w D64 - jest czescia samego strumienia bajtow pliku na
-     * dysku (dokladnie tak samo, jak w zwyklym pliku .prg), wiec trafia do
-     * lancucha sektorow w calosci, razem z reszta danych. */
+    /* NOTE: the load address (the first 2 bytes of "data") is NOT
+     * separate metadata in D64 - it's part of the file's byte stream on
+     * disk itself (exactly as in a plain .prg file), so it goes into the
+     * sector chain in full, along with the rest of the data. */
     size_t payload_len = data_len;
 
     size_t name_len = strlen(name);
@@ -444,9 +443,9 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
 
     long bam_off = d64_ts_offset(D64_BAM_TRACK, D64_BAM_SECTOR);
 
-    /* jesli plik o tej nazwie juz istnieje, zwolnij jego stary lancuch
-     * danych i zapamietaj jego wpis katalogowy do ponownego uzycia -
-     * dzieki temu SAVE dziala jak nadpisanie, tak jak na prawdziwym C64 */
+    /* if a file with this name already exists, free its old data chain
+     * and remember its directory entry for reuse - this way SAVE behaves
+     * like an overwrite, just as on a real C64 */
     d64_dirent_t entries[D64_MAX_ENTRIES];
     int n = d64_read_all_entries(img, img_size, entries, D64_MAX_ENTRIES);
     int reuse_t = -1, reuse_s = -1, reuse_i = -1;
@@ -461,10 +460,10 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
         }
     }
 
-    /* alokuj sektory danych (co najmniej 1, nawet dla pustego pliku) */
+    /* allocate data sectors (at least 1, even for an empty file) */
     int needed = (int)((payload_len + 253) / 254);
     if (needed == 0) needed = 1;
-    if (needed > 664) return 0; /* wiecej sektorow niz ma caly dysk */
+    if (needed > 664) return 0; /* more sectors than the whole disk has */
 
     int *chain_t = malloc((size_t)needed * sizeof(int));
     int *chain_s = malloc((size_t)needed * sizeof(int));
@@ -475,7 +474,7 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
         if (!d64_alloc_sector(img, bam_off, &chain_t[allocated], &chain_s[allocated])) break;
     }
     if (allocated < needed) {
-        /* brak miejsca - wycofaj czesciowa alokacje */
+        /* no room - roll back the partial allocation */
         for (int j = 0; j < allocated; j++) {
             uint8_t *bament = img + bam_off + 4 + (chain_t[j] - 1) * 4;
             int bi = chain_s[j] / 8, bb = chain_s[j] % 8;
@@ -487,7 +486,7 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
         return 0;
     }
 
-    /* zapisz dane do zaalokowanych sektorow, tworzac lancuch */
+    /* write the data into the allocated sectors, forming a chain */
     size_t remaining = payload_len;
     const uint8_t *src = data;
     for (int i = 0; i < needed; i++) {
@@ -507,9 +506,9 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
         }
     }
 
-    /* znajdz miejsce na wpis katalogowy: ponownie uzyty slot po
-     * nadpisaniu, pierwszy wolny (typ==0) w istniejacych sektorach
-     * katalogu, albo nowy sektor katalogu doalokowany na sciezce 18 */
+    /* find a slot for the directory entry: the reused slot from an
+     * overwrite, the first free (type==0) slot in the existing directory
+     * sectors, or a new directory sector allocated on track 18 */
     int slot_t = reuse_t, slot_s = reuse_s, slot_i = reuse_i;
     if (slot_t < 0) {
         int dir_t = img[bam_off], dir_s = img[bam_off + 1];
@@ -530,7 +529,7 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
         if (slot_t < 0) {
             int new_t, new_s;
             if (!d64_alloc_dir_sector(img, bam_off, &new_t, &new_s)) {
-                /* brak miejsca na katalog - wycofaj alokacje danych */
+                /* no room for the directory - roll back the data allocation */
                 for (int i = 0; i < needed; i++) {
                     uint8_t *bament = img + bam_off + 4 + (chain_t[i] - 1) * 4;
                     int bi = chain_s[i] / 8, bb = chain_s[i] % 8;
@@ -555,7 +554,7 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
     long soff = d64_ts_offset(slot_t, slot_s);
     uint8_t *slot = img + soff + 2 + slot_i * 32;
     memset(slot, 0, 32);
-    slot[0] = 0x82; /* PRG, zamkniety */
+    slot[0] = 0x82; /* PRG, closed */
     slot[1] = (uint8_t)chain_t[0];
     slot[2] = (uint8_t)chain_s[0];
     memset(slot + 3, 0xA0, 16);
@@ -569,7 +568,7 @@ static int d64_save(uint8_t *img, size_t img_size, const char *name,
 }
 
 /* ---------------------------------------------------------------------- *
- * API publiczne
+ * Public API
  * ---------------------------------------------------------------------- */
 
 uint8_t *diskimage_find_prg(const char *disk_dir, const char *name, size_t *out_len)
@@ -621,7 +620,7 @@ uint8_t *diskimage_directory_listing(const char *disk_dir, const char *pattern, 
     uint8_t *listing = malloc(2 + cap);
     if (!listing) { closedir(dir); return NULL; }
     listing[0] = 0x01;
-    listing[1] = 0x08; /* adres zaladowania $0801 */
+    listing[1] = 0x08; /* load address $0801 */
     uint8_t *data = listing + 2;
     size_t pos = 0;
     int done = 0;
@@ -659,7 +658,7 @@ uint8_t *diskimage_directory_listing(const char *disk_dir, const char *pattern, 
 
     if (!done) { free(listing); return NULL; }
 
-    data[pos++] = 0x00; /* koniec programu: wskaznik nastepnej linii = 0 */
+    data[pos++] = 0x00; /* end of program: next-line pointer = 0 */
     data[pos++] = 0x00;
 
     *out_len = 2 + pos;
@@ -682,7 +681,7 @@ int diskimage_save_prg(const char *disk_dir, const char *name, const uint8_t *da
         }
     }
     closedir(dir);
-    if (image_count != 1) return 0; /* dwuznacznosc albo brak obrazu */
+    if (image_count != 1) return 0; /* ambiguous, or no image at all */
 
     FILE *f = fopen(image_path, "r+b");
     if (!f) return 0;

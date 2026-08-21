@@ -11,16 +11,15 @@
 
 #include <stdint.h>
 
-/* Minimalny podzbior pol multiboot_info_t potrzebny temu projektowi -
- * budowany bezposrednio przez boot.s (poniewaz nie korzystamy z
- * prawdziwego bootloadera zgodnego z Multiboot, hipernadzorca KVM sam
- * odgrywa jego role: uruchamia gosciu w trybie rzeczywistym pod adresem
- * 0x00000, a boot.s przechodzi do trybu chronionego i przygotowuje ta
- * strukture dla kernel_main()). */
+/* Minimal subset of the multiboot_info_t fields this project needs -
+ * built directly by boot.s (since we don't use a real Multiboot-compliant
+ * bootloader; the KVM hypervisor itself plays that role: it starts the
+ * guest in real mode at address 0x00000, and boot.s switches to protected
+ * mode and prepares this structure for kernel_main()). */
 typedef struct multiboot_info_min {
     uint32_t magic;             /* 0x2BADB002 */
     uint32_t flags;
-    uint32_t framebuffer_addr;  /* fizyczny adres bufora VESA (0xA0000) */
+    uint32_t framebuffer_addr;  /* physical address of the VESA buffer (0xA0000) */
     uint32_t framebuffer_width;
     uint32_t framebuffer_height;
     uint32_t framebuffer_bpp;

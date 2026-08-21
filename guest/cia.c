@@ -11,20 +11,20 @@
 #include "cia.h"
 #include "libc_shim.h"
 
-/* Rejestry wspolne dla jednego ukladu CIA 6526. */
+/* Registers common to a single CIA 6526 chip. */
 typedef struct {
     uint8_t pra, prb;
     uint8_t ddra, ddrb;
     uint16_t timer_a, timer_a_latch;
     uint16_t timer_b, timer_b_latch;
     uint8_t cra, crb;
-    uint8_t icr_mask;      /* maska zatwierdzonych zrodel przerwan (bity 0-4) */
-    uint8_t icr_flags;     /* zatrzaskniete, niepotwierdzone zrodla */
+    uint8_t icr_mask;      /* mask of enabled interrupt sources (bits 0-4) */
+    uint8_t icr_flags;     /* latched, unacknowledged sources */
     uint8_t tod_10ths, tod_sec, tod_min, tod_hr;
 } cia_regs_t;
 
 static cia_regs_t cia1, cia2;
-static bool keymatrix[8][8]; /* [row][col], true = wcisniety */
+static bool keymatrix[8][8]; /* [row][col], true = pressed */
 
 #define ICR_TA   0x01
 #define ICR_TB   0x02
@@ -49,27 +49,27 @@ void cia_reset(void)
 
 static uint8_t effective_port(uint8_t pr, uint8_t ddr)
 {
-    /* bity skonfigurowane jako wejscie "plywaja" wysoko (podciagniecie). */
+    /* bits configured as input "float" high (pull-up). */
     return (pr & ddr) | (uint8_t)(~ddr);
 }
 
-/* --- macierz klawiatury ------------------------------------------------ */
+/* --- keyboard matrix ---------------------------------------------------- */
 
 void cia_keyboard_set(uint8_t row, uint8_t col, bool pressed)
 {
     if (row < 8 && col < 8) keymatrix[row][col] = pressed;
 }
 
-/* Zwraca bity odczytane po stronie "read_is_row" (true=PRB/rows,
- * false=PRA/cols), gdy strona przeciwna steruje (aktywnie niskim
- * poziomem) liniami wg drive_mask/drive_val. Bit=0 w drive_val przy
- * odpowiadajacym bicie drive_mask=1(wyjscie) oznacza aktywne sterowanie. */
+/* Returns the bits read on the "driving_cols" side (true=PRB/rows,
+ * false=PRA/cols), while the opposite side drives (actively low) its
+ * lines per drive_mask/drive_val. A 0 bit in drive_val at a position
+ * where drive_mask=1 (output) means that line is actively driven. */
 static uint8_t keyboard_scan(bool driving_cols, uint8_t drive_mask, uint8_t drive_val)
 {
     uint8_t result = 0xFF;
     for (int d = 0; d < 8; d++) {
-        if (!(drive_mask & (1u << d))) continue;      /* linia nieskonfigurowana jako wyjscie */
-        if (drive_val & (1u << d)) continue;           /* wyjscie stanu wysokiego - nieaktywne */
+        if (!(drive_mask & (1u << d))) continue;      /* line not configured as output */
+        if (drive_val & (1u << d)) continue;           /* driven high - inactive */
         for (int r = 0; r < 8; r++) {
             bool pressed = driving_cols ? keymatrix[r][d] : keymatrix[d][r];
             if (pressed) result &= (uint8_t)~(1u << r);
@@ -78,7 +78,7 @@ static uint8_t keyboard_scan(bool driving_cols, uint8_t drive_mask, uint8_t driv
     return result;
 }
 
-/* --- CIA1: klawiatura + timery -> IRQ ---------------------------------- */
+/* --- CIA1: keyboard + timers -> IRQ -------------------------------------- */
 
 uint8_t cia1_reg_read(uint8_t offset)
 {
@@ -86,8 +86,8 @@ uint8_t cia1_reg_read(uint8_t offset)
     switch (offset) {
         case 0x00: return effective_port(cia1.pra, cia1.ddra);
         case 0x01: {
-            /* Standardowy kierunek skanowania KERNAL-a: PRA steruje kolumnami
-             * (wyjscia, aktywne niskim stanem), PRB odczytuje wiersze. */
+            /* The KERNAL's standard scan direction: PRA drives the columns
+             * (outputs, active low), PRB reads back the rows. */
             uint8_t rows = keyboard_scan(true, cia1.ddra, cia1.pra);
             return rows & effective_port(cia1.prb, cia1.ddrb);
         }
@@ -101,10 +101,10 @@ uint8_t cia1_reg_read(uint8_t offset)
         case 0x09: return cia1.tod_sec;
         case 0x0A: return cia1.tod_min;
         case 0x0B: return cia1.tod_hr;
-        case 0x0C: return 0x00; /* serial shift - nieuzywane */
+        case 0x0C: return 0x00; /* serial shift - unused */
         case 0x0D: {
             uint8_t v = cia1.icr_flags;
-            cia1.icr_flags = 0; /* odczyt kasuje zatrzask (i linie IRQ) */
+            cia1.icr_flags = 0; /* reading clears the latch (and the IRQ line) */
             return v;
         }
         case 0x0E: return cia1.cra;
@@ -147,7 +147,7 @@ void cia1_reg_write(uint8_t offset, uint8_t value)
     }
 }
 
-/* --- CIA2: bank VIC-II + timery -> NMI ---------------------------------- */
+/* --- CIA2: VIC-II bank + timers -> NMI ------------------------------------ */
 
 uint8_t cia2_reg_read(uint8_t offset)
 {
@@ -217,11 +217,11 @@ uint8_t cia2_vic_bank(void)
     return (uint8_t)(3 - (pra & 0x03));
 }
 
-/* --- timery: wspolna logika co CIA1/CIA2 -------------------------------- */
+/* --- timers: logic shared by CIA1/CIA2 ------------------------------------ */
 
-/* Odlicza jeden 16-bitowy timer o `cycles` cykli. Przy niedomiarze zatrzaskuje
- * zrodlo przerwania, ewentualnie zatrzymuje sie (tryb one-shot, CR bit3=1)
- * albo przeladowuje sie z zatrzasku i liczy dalej (tryb ciagly). */
+/* Counts down one 16-bit timer by `cycles` cycles. On underflow, it latches
+ * the interrupt source, then either stops (one-shot mode, CR bit3=1) or
+ * reloads from the latch and keeps counting (continuous mode). */
 static void timer_tick_one(uint16_t *timer, uint16_t latch, uint8_t *cr,
                             uint8_t icr_bit, cia_regs_t *c, int cycles)
 {
@@ -235,7 +235,7 @@ static void timer_tick_one(uint16_t *timer, uint16_t latch, uint8_t *cr,
             c->icr_flags |= icr_bit;
             if (c->icr_mask & icr_bit) c->icr_flags |= ICR_IR;
             if (*cr & 0x08) { *cr &= (uint8_t)~0x01; *timer = latch; break; }
-            *timer = latch ? latch : 1; /* zabezpieczenie przed petla przy latch=0 */
+            *timer = latch ? latch : 1; /* guard against an infinite loop when latch=0 */
         }
     }
 }

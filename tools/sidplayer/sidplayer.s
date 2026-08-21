@@ -24,29 +24,29 @@
 
 .include "c64.inc"
 
-; --- adresy "skrzynki pocztowej" hypercalla SIDLOAD (musza byc zgodne z
+; --- SIDLOAD hypercall "mailbox" addresses (must match
 ; guest/kernel.c:do_sid_load) ---
-SID_MB_LOAD     = $02      ; +0/+1: adres zaladowania danych utworu
-SID_MB_INIT     = $04      ; +0/+1: adres rutyny INIT
-SID_MB_PLAY     = $06      ; +0/+1: adres rutyny PLAY (0 = self-driven)
-SID_MB_SONGS    = $08      ; liczba podutworow w pliku
-SID_MB_START    = $09      ; domyslny podutwor, juz 0-based
-SID_MB_STATUS   = $0A      ; 1 = OK, 0 = blad
+SID_MB_LOAD     = $02      ; +0/+1: tune data load address
+SID_MB_INIT     = $04      ; +0/+1: INIT routine address
+SID_MB_PLAY     = $06      ; +0/+1: PLAY routine address (0 = self-driven)
+SID_MB_SONGS    = $08      ; number of subsongs in the file
+SID_MB_START    = $09      ; default subsong, already 0-based
+SID_MB_STATUS   = $0A      ; 1 = OK, 0 = error
 
 SID_LOAD_HYPERCALL = $F700
 
-; Bezpieczna kopia adresu PLAY, POZA strona zerowa. Wiele odtwarzanych
-; utworow agresywnie uzywa niskiej strony zerowej na wlasne zmienne, a
-; JSR_PLAY czyta adres docelowy PRZY KAZDYM przerwaniu (nie tylko raz) -
-; gdyby czytal wprost z mailboxa SID_MB_PLAY ($06/$07), po pierwszym
-; nadpisaniu przez sam utwor skoczylby w losowe miejsce. $0340 to klasyczny,
-; bezpieczny obszar "bufora kasetowego" ($033C-$03FB), nieuzywany bez
-; faktycznego napedu tasmowego.
+; Safe copy of the PLAY address, OUTSIDE the zero page. Many played tunes
+; aggressively use low zero-page addresses for their own variables, and
+; JSR_PLAY reads the target address on EVERY interrupt (not just once) -
+; if it read directly from the SID_MB_PLAY mailbox ($06/$07), after the
+; tune itself first overwrote it, it would jump to a random location.
+; $0340 is the classic, safe "cassette buffer" area ($033C-$03FB), unused
+; without an actual tape drive.
 SAFE_PLAY       = $0340
 
 .segment "CODE"
 
-; --- naglowek kartridza C64: cold-start vector, NMI vector, sygnatura ------
+; --- C64 cartridge header: cold-start vector, NMI vector, signature ------
         .word START
         .word NMI_HANDLER
         .byte "CBM80"
@@ -57,7 +57,7 @@ START:
         TXS
         CLD
 
-        ; --- wyczysc ekran (spacja) i pamiec kolorow (niebieski tlo) -------
+        ; --- clear the screen (space) and color memory (blue background) -------
         LDX     #0
 CLR_SCREEN:
         LDA     #32
@@ -74,23 +74,23 @@ CLR_SCREEN:
         BNE     CLR_SCREEN
 
         LDA     #6
-        STA     VIC+$21         ; tlo (VIC_BGCOLOR0, $D021)
+        STA     VIC+$21         ; background (VIC_BGCOLOR0, $D021)
         LDA     #0
-        STA     $D020           ; ramka
+        STA     $D020           ; border
 
-        ; --- tytul (kody ekranowe, NIE ascii/petscii) -----------------------
+        ; --- title (screen codes, NOT ascii/petscii) -----------------------
         LDX     #0
 PRINT_TITLE:
         LDA     TITLE_TEXT,X
         BEQ     TITLE_DONE
-        STA     $0450,X         ; wiersz 2, od kolumny 0
-        LDA     #1              ; bialy
+        STA     $0450,X         ; row 2, from column 0
+        LDA     #1              ; white
         STA     $D850,X
         INX
         JMP     PRINT_TITLE
 TITLE_DONE:
 
-        ; --- SIDLOAD: ustaw nazwe pliku i wywolaj hypercall hosta ----------
+        ; --- SIDLOAD: set the filename and call the host hypercall ----------
         LDA     #<FILENAME
         STA     FNAM
         LDA     #>FILENAME
@@ -103,37 +103,37 @@ TITLE_DONE:
         LDA     SID_MB_STATUS
         BNE     LOAD_OK
 
-        ; --- blad wczytywania: czerwona ramka, petla ------------------------
+        ; --- load error: red border, loop ------------------------
         LDA     #2
         STA     $D020
 HANG_ERR:
         JMP     HANG_ERR
 
 LOAD_OK:
-        ; --- zabezpiecz adres PLAY POZA strona zerowa, zanim cokolwiek z
-        ; kodu utworu zdazy wystartowac i ewentualnie nadpisac $06/$07 -----
+        ; --- save the PLAY address OUTSIDE the zero page, before any of the
+        ; tune's code gets to run and possibly overwrite $06/$07 -----
         LDA     SID_MB_PLAY
         STA     SAFE_PLAY
         LDA     SID_MB_PLAY+1
         STA     SAFE_PLAY+1
 
-        ; --- INIT(A = numer podutworu 0-based) -----------------------------
+        ; --- INIT(A = 0-based subsong number) -----------------------------
         LDA     SID_MB_START
         LDX     #0
         LDY     #0
         JSR     JSR_INIT
 
-        ; --- jawny adres PLAY, czy self-driven? -----------------------------
+        ; --- explicit PLAY address, or self-driven? -----------------------------
         LDA     SID_MB_PLAY
         ORA     SID_MB_PLAY+1
         BEQ     SELF_DRIVEN
 
-        ; --- jawny PLAY: wlasne przerwanie rastra, CIA wylaczone -----------
+        ; --- explicit PLAY: our own raster interrupt, CIA disabled -----------
         SEI
         LDA     #$7F
         STA     CIA1_ICR
         STA     CIA2_ICR
-        LDA     CIA1_ICR        ; odczyt kasuje ewentualny stary stan ICR
+        LDA     CIA1_ICR        ; reading clears any old ICR state
         LDA     CIA2_ICR
 
         LDA     #<MY_IRQ
@@ -154,7 +154,7 @@ SELF_DRIVEN:
         CLI
 
 IDLE:
-        INC     $D020           ; delikatnie migajaca ramka = oznaka zycia
+        INC     $D020           ; gently flashing border = sign of life
         LDX     #0
 IDLE_DELAY:
         LDY     #0
@@ -165,24 +165,25 @@ IDLE_DELAY2:
         BNE     IDLE_DELAY
         JMP     IDLE
 
-; --- trampoliny posredniego JSR (klasyczna sztuczka: adres-1 na stos + RTS) -
-; RTS zawsze dodaje 1 do zdjetego ze stosu adresu, wiec trzeba wepchnac
-; (cel - 1), nie sam cel - std. 16-bitowe odejmowanie z propagacja pozyczki.
-; UWAGA na kolejnosc PHA: RTS zdejmuje PCL jako PIERWSZY bajt (to ten
-; wypchniety NAJPOZNIEJ), wiec wysoki bajt trzeba wepchnac PIERWSZY, a niski
-; DRUGI (dokladnie odwrotnie niz naturalna kolejnosc liczenia odejmowania,
-; ktora zaczyna sie od niskiego bajtu ze wzgledu na pozyczke) - stad TAX/TXA
-; jako tymczasowa schowka na niski bajt.
+; --- indirect JSR trampolines (classic trick: push address-1 + RTS) -
+; RTS always adds 1 to the address popped off the stack, so what must be
+; pushed is (target - 1), not the target itself - a standard 16-bit
+; subtraction with borrow propagation. NOTE the PHA order: RTS pops PCL
+; as the FIRST byte (the one pushed LAST), so the high byte must be
+; pushed FIRST, and the low byte SECOND (exactly the reverse of the
+; natural order of computing the subtraction, which starts from the low
+; byte because of the borrow) - hence TAX/TXA as a temporary stash for
+; the low byte.
 JSR_INIT:
         SEC
         LDA     SID_MB_INIT
         SBC     #1
-        TAX                     ; X = niski bajt (cel-1), na potem
+        TAX                     ; X = low byte (target-1), for later
         LDA     SID_MB_INIT+1
         SBC     #0
-        PHA                     ; wysoki bajt PIERWSZY -> RTS zdejmie go DRUGI (PCH)
+        PHA                     ; high byte FIRST -> RTS pops it SECOND (PCH)
         TXA
-        PHA                     ; niski bajt DRUGI -> RTS zdejmie go PIERWSZY (PCL)
+        PHA                     ; low byte SECOND -> RTS pops it FIRST (PCL)
         RTS
 
 JSR_PLAY:
@@ -205,7 +206,7 @@ MY_IRQ:
         PHA
         JSR     JSR_PLAY
         LDA     #$01
-        STA     VIC_IRR         ; potwierdz przerwanie rastra
+        STA     VIC_IRR         ; acknowledge the raster interrupt
         PLA
         TAY
         PLA
@@ -216,10 +217,10 @@ MY_IRQ:
 NMI_HANDLER:
         RTI
 
-; --- dane --------------------------------------------------------------------
+; --- data --------------------------------------------------------------------
 TITLE_TEXT:
-        .byte 19,9,4,32,16,12,1,25,5,18,0      ; "SID PLAYER" (kody ekranowe)
+        .byte 19,9,4,32,16,12,1,25,5,18,0      ; "SID PLAYER" (screen codes)
 
 FILENAME:
-        .byte "Armalyte.sid"                    ; <-- podmien nazwe pliku tutaj
+        .byte "Armalyte.sid"                    ; <-- change the filename here
 FILENAME_LEN = * - FILENAME

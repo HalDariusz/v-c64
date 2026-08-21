@@ -27,9 +27,9 @@ void sid_reset(void);
 uint8_t sid_reg_read(uint8_t offset);
 void    sid_reg_write(uint8_t offset, uint8_t value);
 
-/* Generuje pojedyncza probke audio (16-bit signed, mono) na podstawie
- * biezacego stanu rejestrow. Wywolywane przez kernel.c w tempie
- * SID_SAMPLE_RATE probek/s (przeliczonym z cykli zegara procesora). */
+/* Generates a single audio sample (16-bit signed, mono) from the current
+ * register state. Called by kernel.c at a rate of SID_SAMPLE_RATE
+ * samples/s (derived from the CPU clock cycles). */
 int16_t sid_generate_sample(void);
 
 #endif /* SID_H */

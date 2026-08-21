@@ -23,23 +23,23 @@
 
 void cartridge_reset(void);
 
-/* Stan linii /GAME i /EXROM (true = nieaktywna/wysoka, jak przy braku kartridza). */
+/* State of the /GAME and /EXROM lines (true = inactive/high, as with no cartridge). */
 bool cartridge_game_line(void);
 bool cartridge_exrom_line(void);
 
 bool cartridge_present(void);
 
-/* Odczyt ROM-u kartridza w oknie LOROM ($8000-$9FFF) / HIROM ($A000-$BFFF). */
+/* Reads the cartridge ROM in the LOROM ($8000-$9FFF) / HIROM ($A000-$BFFF) window. */
 uint8_t cartridge_read_lorom(uint16_t address);
 uint8_t cartridge_read_hirom(uint16_t address);
 
-/* Dostep do przestrzeni I/O1 ($DE00-$DEFF) / I/O2 ($DF00-$DFFF, gdy nie REU). */
+/* Access to the I/O1 ($DE00-$DEFF) / I/O2 ($DF00-$DFFF, when not REU) space. */
 uint8_t cartridge_io1_read(uint16_t address);
 void    cartridge_io1_write(uint16_t address, uint8_t value);
 
-/* Jesli zaladowany kartridz ma poprawna sygnature autostartu "CBM80" pod
- * $8004-$8008, zwraca true i ustawia *out_addr na wektor cold-start
- * ($8000/$8001) - do przekierowania wektora RESET 6502 ($FFFC/$FFFD). */
+/* If the loaded cartridge has a valid "CBM80" autostart signature at
+ * $8004-$8008, returns true and sets *out_addr to the cold-start vector
+ * ($8000/$8001) - used to redirect the 6502 RESET vector ($FFFC/$FFFD). */
 bool cartridge_autostart_vector(uint16_t *out_addr);
 
 #endif /* CARTRIDGE_H */

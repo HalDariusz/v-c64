@@ -14,19 +14,19 @@
 
 static uint8_t reu_ram[REU_SIZE];
 
-static uint8_t status_reg;      /* $DF00 (odczyt) */
+static uint8_t status_reg;      /* $DF00 (read) */
 static uint8_t command_reg;     /* $DF01 */
 static uint16_t c64_addr;       /* $DF02/$DF03 */
 static uint16_t reu_addr16;     /* $DF04/$DF05 */
-static uint8_t reu_bank;        /* $DF06 bity 0-2 */
-static uint16_t xfer_len;       /* $DF07/$DF08 - 0 oznacza 65536 (jak w oryginale) */
+static uint8_t reu_bank;        /* $DF06 bits 0-2 */
+static uint16_t xfer_len;       /* $DF07/$DF08 - 0 means 65536 (as on the original) */
 static uint8_t irq_mask;        /* $DF09 */
 static uint8_t addr_ctrl;       /* $DF0A */
 
 void reu_reset(void)
 {
     memset(reu_ram, 0, sizeof(reu_ram));
-    status_reg = 0x10; /* wersja chipu / brak zdarzen */
+    status_reg = 0x10; /* chip version / no pending events */
     command_reg = 0xFF;
     c64_addr = 0;
     reu_addr16 = 0;
@@ -77,16 +77,16 @@ static void do_transfer(void)
 
     status_reg |= 0x40; /* End of Block */
     if (fault) status_reg |= 0x20;
-    if (irq_mask & 0x80) status_reg |= 0x80; /* zglos IRQ, jesli wlaczony */
+    if (irq_mask & 0x80) status_reg |= 0x80; /* raise IRQ, if enabled */
 
-    command_reg &= (uint8_t)~0x80; /* Execute skasowany po zakonczeniu */
+    command_reg &= (uint8_t)~0x80; /* Execute bit cleared once done */
 }
 
 uint8_t reu_reg_read(uint8_t offset)
 {
     offset &= 0x1F;
     switch (offset) {
-        case 0x00: { uint8_t v = status_reg; status_reg &= 0x1F; return v; } /* odczyt kasuje bity zdarzen */
+        case 0x00: { uint8_t v = status_reg; status_reg &= 0x1F; return v; } /* reading clears the event bits */
         case 0x01: return command_reg;
         case 0x02: return (uint8_t)(c64_addr & 0xFF);
         case 0x03: return (uint8_t)(c64_addr >> 8);
