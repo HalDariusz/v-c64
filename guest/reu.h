@@ -1,6 +1,12 @@
 /*
- * reu.h - emulacja kontrolera RAM Expansion Unit (REU) 128 KB pod $DF00-$DF1F,
- * zgodna z rejestrowym interfejsem REC uzywanym w 1700/1750 REU.
+ * guest/reu.h - emulation of the 128 KB RAM Expansion Unit (REU)
+ * controller at $DF00-$DF1F, compatible with the register interface used
+ * by the 1700/1750 REC chip.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef REU_H
 #define REU_H

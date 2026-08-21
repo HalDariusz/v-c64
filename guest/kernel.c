@@ -1,10 +1,18 @@
 /*
- * kernel.c - glowna petla wykonania goscia bare-metal: inicjalizuje wszystkie
- * uklady C64, uruchamia rdzen 6502 (fake6502) krok po kroku, taktuje VIC-II,
- * CIA i SID na podstawie zuzytych cykli zegara, obsluguje przerwania IRQ/NMI,
- * klawiature (poprzez port 0x60 hosta), fast-loader plikow .PRG (porty
- * 0x5007/0x5008) oraz strumien audio SID (port 0x5006) i konsole
- * diagnostyczna (port 0x5001).
+ * guest/kernel.c - main execution loop of the bare-metal C64 guest.
+ *
+ * Initializes every emulated chip, single-steps the 6502 CPU core
+ * (fake6502), times VIC-II/CIA/SID off the CPU cycles actually consumed,
+ * dispatches IRQ/NMI interrupts, reads the keyboard (host port 0x60),
+ * intercepts KERNAL LOAD/SAVE for the instant .PRG/.D64 fast-loader
+ * (ports 0x5007/0x5008), streams SID audio to the host (port 0x5006),
+ * drives the SID hypercall player loader ($F700, see do_sid_load()), and
+ * writes diagnostic output to the host console (port 0x5001).
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #include "kernel.h"
 #include "fake6502.h"
@@ -84,7 +92,7 @@ static void do_fast_load(fake6502_context *cpu)
     uint16_t ret_addr = fake6502_pull_16(cpu); /* symulacja RTS z JSR $FFD5 */
 
     if (!status) {
-        debug_puts("LOAD: plik nie znaleziony\n");
+        debug_puts("LOAD: file not found\n");
         fake6502_carry_set(cpu);
         cpu->cpu.pc = (uint16_t)(ret_addr + 1);
         return;
@@ -113,7 +121,7 @@ static void do_fast_load(fake6502_context *cpu)
     c64_ram[0x2D] = (uint8_t)(end_addr & 0xFF);
     c64_ram[0x2E] = (uint8_t)(end_addr >> 8);
 
-    debug_puts("LOAD: OK, koniec=$");
+    debug_puts("LOAD: OK, end=$");
     debug_puthex16(end_addr);
     debug_puts("\n");
 }
@@ -149,7 +157,7 @@ static void do_fast_save(fake6502_context *cpu)
     if (status) fake6502_carry_clear(cpu); else fake6502_carry_set(cpu);
     cpu->cpu.pc = (uint16_t)(ret_addr + 1);
 
-    debug_puts(status ? "SAVE: OK\n" : "SAVE: blad\n");
+    debug_puts(status ? "SAVE: OK\n" : "SAVE: error\n");
 }
 
 /* --- SID-load: wlasny "hypercall" (PC == $F700, nie jest to prawdziwa
@@ -204,7 +212,7 @@ static void do_sid_load(fake6502_context *cpu)
         debug_puthex16(play_addr);
         debug_puts("\n");
     } else {
-        debug_puts("SIDLOAD: blad\n");
+        debug_puts("SIDLOAD: error\n");
     }
 
     uint16_t ret_addr = fake6502_pull_16(cpu);
@@ -345,7 +353,7 @@ static void load_roms(void)
 
 void kernel_main(multiboot_info_min_t *mb_info)
 {
-    debug_puts("=== C64-na-KVM: rozruch unikernela ===\n");
+    debug_puts("=== C64-on-KVM: unikernel boot ===\n");
 
     load_roms();
 
@@ -360,7 +368,7 @@ void kernel_main(multiboot_info_min_t *mb_info)
     memset(&cpu, 0, sizeof(cpu));
     fake6502_reset(&cpu);
 
-    debug_puts("PC po resecie = $");
+    debug_puts("PC after reset = $");
     debug_puthex16(cpu.cpu.pc);
     debug_puts("\n");
 

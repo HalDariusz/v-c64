@@ -1,4 +1,15 @@
-/* diskimage.c - patrz diskimage.h. */
+/*
+ * host/diskimage.c - implementation of the .d64/.t64 disk image reader
+ * and writer declared in diskimage.h: BAM parsing and allocation,
+ * directory-chain walking and appending, PRG extraction with KERNAL-style
+ * wildcard matching, and the BASIC-format directory listing byte layout.
+ * See diskimage.h for the full design notes and scope.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 
 #define _GNU_SOURCE
 #include "diskimage.h"
@@ -594,7 +605,7 @@ uint8_t *diskimage_find_prg(const char *disk_dir, const char *name, size_t *out_
         if (found) {
             result = found;
             *out_len = len;
-            fprintf(stderr, "[diskimage] '%s' znaleziono w obrazie '%s'\n", name, de->d_name);
+            fprintf(stderr, "[diskimage] '%s' found in image '%s'\n", name, de->d_name);
         }
     }
     closedir(dir);
@@ -687,7 +698,7 @@ int diskimage_save_prg(const char *disk_dir, const char *name, const uint8_t *da
     if (ok) {
         fseek(f, 0, SEEK_SET);
         fwrite(img, 1, (size_t)sz, f);
-        fprintf(stderr, "[diskimage] SAVE '%s' zapisany do obrazu '%s'\n", name, image_path);
+        fprintf(stderr, "[diskimage] SAVE '%s' written to image '%s'\n", name, image_path);
     }
     fclose(f);
     free(img);

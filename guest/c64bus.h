@@ -1,9 +1,14 @@
 /*
- * c64bus.h - wspoldzielony stan magistrali C64: RAM, ROM-y, port procesora.
+ * guest/c64bus.h - shared C64 bus state: RAM, ROM images, CPU port.
  *
- * Wszystkie ukladu (VIC-II, CIA 1/2, SID, REU, cartridge) widza ten sam
- * 64 KB obraz pamieci procesora 6510 poprzez memory_pla.c, ktory jest
- * jedynym miejscem implementujacym logike bankowania PLA.
+ * Every chip (VIC-II, CIA 1/2, SID, REU, cartridge) sees the same 64 KB
+ * 6510 CPU memory image through memory_pla.c, which is the single place
+ * implementing the PLA banking logic.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef C64BUS_H
 #define C64BUS_H

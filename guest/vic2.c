@@ -1,3 +1,14 @@
+/*
+ * guest/vic2.c - implementation of the VIC-II emulation declared in
+ * vic2.h: the text/multicolor/bitmap/ECM mode rasterizer, the 8-sprite
+ * renderer with priority handling, raster-line IRQ generation, and
+ * scaling of the finished 320x200 frame into the host's VESA buffer.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 #include "vic2.h"
 #include "c64bus.h"
 #include "cia.h"

@@ -1,19 +1,26 @@
-/* diskimage.h - lekki odczyt/zapis obrazow dysku (.d64) i tasmy (.t64) hosta.
+/*
+ * host/diskimage.h - lightweight host-side read/write access to disk
+ * (.d64) and tape (.t64) images.
  *
- * To NIE jest emulacja stacji 1541 ani magnetofonu (bez IEC, bez GCR, bez
- * przebiegu sygnalu na porcie CASSETTE) - to skrot analogiczny do
- * istniejacego fastloadera: host sam parsuje/modyfikuje strukture obrazu
- * (katalog, BAM, lancuchy sektorow) i podaje/przyjmuje dane goscia tak,
- * jakby to byl zwykly plik .prg z katalogu disk/.
+ * This is NOT an emulation of the 1541 drive or a datasette (no IEC, no
+ * GCR, no signal timing on the CASSETTE port) - it's a shortcut similar
+ * in spirit to the existing fast-loader: the host itself parses/modifies
+ * the image structure (directory, BAM, sector chains) and hands
+ * data to/from the guest as if it were a plain .prg file from disk/.
  *
- * Zakres:
- *   - .d64 (35-sciezkowy standard, tolerowany takze 40-sciezkowy przy
- *     odczycie): pelny odczyt i ZAPIS (SAVE dopisuje/nadpisuje plik na
- *     jedynym zamontowanym obrazie .d64 w katalogu dyskietki).
- *   - .t64 ("obraz tasmy" - format wlasny emulatorow, bez GCR): tylko
- *     ODCZYT - w praktyce sluzy do dystrybucji gotowych zrzutow, nie jest
- *     pomyslany jako format zapisywalny (patrz diskimage.c).
- *   - listing katalogu (LOAD"$",8 + LIST) dla obu formatow.
+ * Scope:
+ *   - .d64 (standard 35-track, 40-track also tolerated on read): full
+ *     read and WRITE support (SAVE appends/overwrites a file on the
+ *     single mounted .d64 image in the disk directory).
+ *   - .t64 ("tape image" - an emulator-specific format, no GCR): READ
+ *     ONLY - in practice used to distribute ready-made dumps, not
+ *     designed as a writable format (see diskimage.c).
+ *   - directory listing (LOAD"$",8 + LIST) for both formats.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #pragma once
 

@@ -1,3 +1,13 @@
+/*
+ * guest/cia.c - implementation of the CIA 1/2 emulation declared in
+ * cia.h: Timer A/B countdown and interrupt generation, the 8x8 keyboard
+ * matrix scan, and the CIA2 Port A VIC-II bank-select bits.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 #include "cia.h"
 #include "libc_shim.h"
 

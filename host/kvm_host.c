@@ -1,22 +1,30 @@
 /*
- * kvm_host.c - hipernadzorca hosta: uruchamia goscia bare-metal C64
- * bezposrednio na /dev/kvm (Intel VT-x / AMD-V), bez QEMU.
+ * host/kvm_host.c - the host hypervisor: runs the bare-metal C64 guest
+ * directly on /dev/kvm (Intel VT-x / AMD-V), with no QEMU involved.
  *
- * Rejestruje 3 regiony pamieci fizycznej goscia:
- *   RAM  0x00000-0x7FFFF (512 KB) - kod/dane goscia (c64_guest.bin @ 0x0)
- *   VRAM 0xA0000-0xBFFFF (128 KB) - bufor "VESA" 320x200x8bpp
- *   BIOS 0xF0000-0xFFFFF (64 KB)  - wektor resetu x86 pod 0xFFFF0
+ * Registers 3 physical guest memory regions:
+ *   RAM  0x00000-0x7FFFF (512 KB) - guest code/data (c64_guest.bin @ 0x0)
+ *   VRAM 0xA0000-0xBFFFF (128 KB) - "VESA" 320x200x8bpp framebuffer
+ *   BIOS 0xF0000-0xFFFFF (64 KB)  - x86 reset vector at 0xFFFF0
  *
- * vCPU startuje w trybie rzeczywistym z CS:IP = F000:FFF0 (fizyczny
- * 0xFFFF0), gdzie znajduje sie 5-bajtowy "jmp far 0000:0000" prowadzacy
- * do goscia zaladowanego pod fizycznym 0x00000 (patrz guest/boot.s).
+ * The vCPU starts in real mode with CS:IP = F000:FFF0 (physical
+ * 0xFFFF0), where a 5-byte "jmp far 0000:0000" leads to the guest loaded
+ * at physical 0x00000 (see guest/boot.s).
  *
- * Obsluga KVM_EXIT_IO realizuje prosty, wlasny protokol miedzy hostem a
- * goscia (porty 0x60, 0x5001, 0x5006, 0x5007, 0x5008 - patrz guest/kernel.c
- * po dokladny opis kazdego z nich) oraz KVM_EXIT_HLT jako czyste zamkniecie.
+ * KVM_EXIT_IO handling implements a simple, custom protocol between the
+ * host and the guest (ports 0x60, 0x5001, 0x5006, 0x5007, 0x5008 - see
+ * guest/kernel.c for the exact meaning of each), plus KVM_EXIT_HLT for a
+ * clean shutdown.
  *
- * Tryb wyjscia audio/wideo: headless. Obraz VIC-II zapisywany jest
- * okresowo do build/frame.ppm, audio SID strumieniowane do build/audio.wav.
+ * Audio/video output: with SDL2 available at build time (USE_SDL2), a
+ * single interactive window drives video, keyboard, and audio together;
+ * otherwise a headless fallback periodically writes the VIC-II frame to
+ * build/frame.ppm and streams SID audio to build/audio.wav.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 
 #define _GNU_SOURCE
@@ -341,13 +349,13 @@ static uint8_t g_sdl_rgb[VIC2_W * VIC2_H * 3];
 static void sdl_init(void)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) {
-        fprintf(stderr, "[kvm_host] SDL_Init: %s - kontynuuje bez okna SDL.\n", SDL_GetError());
+        fprintf(stderr, "[kvm_host] SDL_Init: %s - continuing without an SDL window.\n", SDL_GetError());
         return;
     }
     g_sdl_win = SDL_CreateWindow("v-c64", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                   VIC2_W * 2, VIC2_H * 2, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!g_sdl_win) {
-        fprintf(stderr, "[kvm_host] SDL_CreateWindow: %s - kontynuuje bez okna SDL.\n", SDL_GetError());
+        fprintf(stderr, "[kvm_host] SDL_CreateWindow: %s - continuing without an SDL window.\n", SDL_GetError());
         return;
     }
     g_sdl_ren = SDL_CreateRenderer(g_sdl_win, -1, SDL_RENDERER_ACCELERATED);
@@ -366,7 +374,7 @@ static void sdl_init(void)
     g_sdl_audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (g_sdl_audio) SDL_PauseAudioDevice(g_sdl_audio, 0);
 
-    fprintf(stderr, "[kvm_host] okno SDL2 aktywne: obraz + klawiatura + dzwiek w jednym oknie.\n");
+    fprintf(stderr, "[kvm_host] SDL2 window active: video + keyboard + audio in one window.\n");
 }
 
 static void sdl_shutdown(void)
@@ -571,9 +579,9 @@ static void fastload_execute(void)
             g_fl_response_len = 4 + (uint32_t)data_len;
             g_fl_response_pos = 0;
             g_fl_status = 1;
-            fprintf(stderr, "[kvm_host] LOAD '$': katalog wyslany (%zu bajtow)\n", data_len);
+            fprintf(stderr, "[kvm_host] LOAD '$': directory sent (%zu bytes)\n", data_len);
         } else {
-            fprintf(stderr, "[kvm_host] LOAD '$': brak zamontowanych obrazow w '%s'\n", g_disk_dir);
+            fprintf(stderr, "[kvm_host] LOAD '$': no mounted images in '%s'\n", g_disk_dir);
             g_fl_status = 0;
             g_fl_response_len = 0;
             g_fl_response_pos = 0;
@@ -606,12 +614,12 @@ static void fastload_execute(void)
             g_fl_response_len = 4 + (uint32_t)data_len;
             g_fl_response_pos = 0;
             g_fl_status = 1;
-            fprintf(stderr, "[kvm_host] LOAD '%s' (z obrazu dysku/tasmy): %zu bajtow @ $%04X\n",
+            fprintf(stderr, "[kvm_host] LOAD '%s' (from disk/tape image): %zu bytes @ $%04X\n",
                     g_fl_filename, data_len, load_addr);
             return;
         }
 
-        fprintf(stderr, "[kvm_host] LOAD: nie znaleziono '%s'\n", path);
+        fprintf(stderr, "[kvm_host] LOAD: '%s' not found\n", path);
         g_fl_status = 0;
         g_fl_response_len = 0;
         g_fl_response_pos = 0;
@@ -638,7 +646,7 @@ static void fastload_execute(void)
     g_fl_response_len = 4 + (uint32_t)got;
     g_fl_response_pos = 0;
     g_fl_status = 1;
-    fprintf(stderr, "[kvm_host] LOAD '%s': %ld bajtow @ $%04X\n", g_fl_filename, (long)got, load_addr);
+    fprintf(stderr, "[kvm_host] LOAD '%s': %ld bytes @ $%04X\n", g_fl_filename, (long)got, load_addr);
 }
 
 /* --- SID-load: parsowanie naglowka PSID/RSID i serwowanie danych utworu -----
@@ -659,7 +667,7 @@ static void fastload_sid_execute(void)
 
     FILE *f = fopen(path, "rb");
     if (!f) {
-        fprintf(stderr, "[kvm_host] SIDLOAD: nie znaleziono '%s'\n", path);
+        fprintf(stderr, "[kvm_host] SIDLOAD: '%s' not found\n", path);
         g_fl_status = 0;
         g_fl_response_len = 0;
         g_fl_response_pos = 0;
@@ -669,7 +677,7 @@ static void fastload_sid_execute(void)
     uint8_t hdr[0x7C];
     size_t got_hdr = fread(hdr, 1, sizeof(hdr), f);
     if (got_hdr < 0x76 || (memcmp(hdr, "PSID", 4) != 0 && memcmp(hdr, "RSID", 4) != 0)) {
-        fprintf(stderr, "[kvm_host] SIDLOAD: '%s' to nie plik PSID/RSID\n", g_fl_filename);
+        fprintf(stderr, "[kvm_host] SIDLOAD: '%s' is not a PSID/RSID file\n", g_fl_filename);
         fclose(f);
         g_fl_status = 0;
         return;
@@ -776,7 +784,7 @@ static void fastload_save_execute(void)
     memcpy(g_fl_save_prgbuf + 2, g_fl_save_buf, g_fl_save_pos);
     if (diskimage_save_prg(g_disk_dir, g_fl_filename, g_fl_save_prgbuf, 2 + g_fl_save_pos)) {
         g_fl_status = 1;
-        fprintf(stderr, "[kvm_host] SAVE '%s': %u bajtow (do zamontowanego obrazu .d64)\n",
+        fprintf(stderr, "[kvm_host] SAVE '%s': %u bytes (to mounted .d64 image)\n",
                 g_fl_filename, g_fl_save_pos);
         return;
     }
@@ -786,7 +794,7 @@ static void fastload_save_execute(void)
 
     FILE *f = fopen(path, "wb");
     if (!f) {
-        fprintf(stderr, "[kvm_host] SAVE: nie mozna zapisac '%s'\n", path);
+        fprintf(stderr, "[kvm_host] SAVE: cannot write '%s'\n", path);
         g_fl_status = 0;
         return;
     }
@@ -797,7 +805,7 @@ static void fastload_save_execute(void)
     fclose(f);
 
     g_fl_status = 1;
-    fprintf(stderr, "[kvm_host] SAVE '%s': %u bajtow\n", g_fl_filename, g_fl_save_pos);
+    fprintf(stderr, "[kvm_host] SAVE '%s': %u bytes\n", g_fl_filename, g_fl_save_pos);
 }
 
 /* --- ramka wideo: okresowy zrzut VRAM -> build/frame.ppm ------------------ */
@@ -910,14 +918,14 @@ int main(int argc, char **argv)
     if (kvm_fd < 0) {
         perror("open /dev/kvm");
         fprintf(stderr,
-            "Wskazowka: dodaj sie do grupy 'kvm' (sudo usermod -aG kvm $USER, "
-            "nastepnie zaloguj sie ponownie) albo uruchom przez 'sudo'.\n");
+            "Hint: add yourself to the 'kvm' group (sudo usermod -aG kvm $USER, "
+            "then log in again) or run via 'sudo'.\n");
         return 1;
     }
 
     int api_ver = ioctl(kvm_fd, KVM_GET_API_VERSION, 0);
     if (api_ver != 12) {
-        fprintf(stderr, "Nieoczekiwana wersja API KVM: %d\n", api_ver);
+        fprintf(stderr, "Unexpected KVM API version: %d\n", api_ver);
         return 1;
     }
 
@@ -934,10 +942,10 @@ int main(int argc, char **argv)
     reset_vec[3] = 0x00; reset_vec[4] = 0x00;
 
     FILE *gf = fopen(guest_path, "rb");
-    if (!gf) { fprintf(stderr, "Nie mozna otworzyc %s: %s\n", guest_path, strerror(errno)); return 1; }
+    if (!gf) { fprintf(stderr, "Cannot open %s: %s\n", guest_path, strerror(errno)); return 1; }
     size_t n = fread(ram, 1, GUEST_RAM_SIZE, gf);
     fclose(gf);
-    fprintf(stderr, "[kvm_host] zaladowano %zu bajtow goscia z %s\n", n, guest_path);
+    fprintf(stderr, "[kvm_host] loaded %zu bytes of guest code from %s\n", n, guest_path);
 
     register_memory_region(vm_fd, 0, GUEST_RAM_BASE,  GUEST_RAM_SIZE,  ram);
     register_memory_region(vm_fd, 1, GUEST_VRAM_BASE, GUEST_VRAM_SIZE, vram);
@@ -985,10 +993,10 @@ int main(int argc, char **argv)
 #endif
 
     fprintf(stderr,
-        "[kvm_host] start. Wpisuj tekst w tym terminalu, aby wyslac go do "
-        "klawiatury C64. Ctrl+C konczy dzialanie w sposob czysty.\n"
-        "[kvm_host] obraz: build/frame.ppm (odswiezany co ~200ms), "
-        "audio: build/audio.wav%s, katalog dyskietki: %s/\n",
+        "[kvm_host] started. Type in this terminal to send text to the C64 "
+        "keyboard. Ctrl+C ends the run cleanly.\n"
+        "[kvm_host] video: build/frame.ppm (refreshed every ~200ms), "
+        "audio: build/audio.wav%s, disk directory: %s/\n",
         (g_audio_fifo_fd >= 0) ? " + live build/audio.fifo" : "", g_disk_dir);
 
     struct timespec last_dump; clock_gettime(CLOCK_MONOTONIC, &last_dump);
@@ -1004,7 +1012,7 @@ int main(int argc, char **argv)
 
         switch (run->exit_reason) {
             case KVM_EXIT_HLT:
-                fprintf(stderr, "\n[kvm_host] KVM_EXIT_HLT - gosc zakonczyl dzialanie czysto.\n");
+                fprintf(stderr, "\n[kvm_host] KVM_EXIT_HLT - guest shut down cleanly.\n");
                 g_shutdown = 1;
                 break;
 
@@ -1116,12 +1124,12 @@ int main(int argc, char **argv)
             }
 
             case KVM_EXIT_SHUTDOWN:
-                fprintf(stderr, "\n[kvm_host] KVM_EXIT_SHUTDOWN (triple fault?) - przerywam.\n");
+                fprintf(stderr, "\n[kvm_host] KVM_EXIT_SHUTDOWN (triple fault?) - aborting.\n");
                 g_shutdown = 1;
                 break;
 
             default:
-                fprintf(stderr, "\n[kvm_host] nieobslugiwany exit_reason=%d - przerywam.\n",
+                fprintf(stderr, "\n[kvm_host] unhandled exit_reason=%d - aborting.\n",
                         run->exit_reason);
                 g_shutdown = 1;
                 break;
@@ -1150,6 +1158,6 @@ int main(int argc, char **argv)
     wav_finalize();
     if (g_audio_fifo_fd >= 0) close(g_audio_fifo_fd);
     restore_terminal();
-    fprintf(stderr, "[kvm_host] zamkniecie. Probek audio zapisanych: %u\n", g_wav_samples);
+    fprintf(stderr, "[kvm_host] shutting down. Audio samples written: %u\n", g_wav_samples);
     return 0;
 }

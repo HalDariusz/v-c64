@@ -1,5 +1,10 @@
-# Makefile - buduje i uruchamia wirtualny Commodore 64 bare-metal na /dev/kvm,
-# bez QEMU. `make run` robi wszystko: budowa + start.
+# Makefile - builds and runs the bare-metal virtual Commodore 64 on
+# /dev/kvm, with no QEMU. `make run` does everything: build + start.
+#
+# Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+# on Linux /dev/kvm, with no QEMU involved.
+#
+# Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
 
 GUEST_CC      := gcc
 GUEST_CFLAGS  := -m32 -ffreestanding -O2 -fno-pie -fno-stack-protector \
@@ -58,20 +63,20 @@ build/rom_simons.h: roms/simons.bin | build
 	xxd -i -n rom_simons_file roms/simons.bin > $@
 
 roms/kernal.bin:
-	@echo "[Makefile] roms/kernal.bin brak - tworze 8 KB placeholder (same zera)."
-	@echo "[Makefile] Podmien prawdziwym dumpem KERNAL ROM, by C64 realnie wystartowal."
+	@echo "[Makefile] roms/kernal.bin missing - creating an 8 KB placeholder (all zeros)."
+	@echo "[Makefile] Replace it with a real KERNAL ROM dump for the C64 to actually boot."
 	dd if=/dev/zero of=$@ bs=1024 count=8 status=none
 
 roms/basic.bin:
-	@echo "[Makefile] roms/basic.bin brak - tworze 8 KB placeholder (same zera)."
+	@echo "[Makefile] roms/basic.bin missing - creating an 8 KB placeholder (all zeros)."
 	dd if=/dev/zero of=$@ bs=1024 count=8 status=none
 
 roms/chargen.bin:
-	@echo "[Makefile] roms/chargen.bin brak - tworze 4 KB placeholder (same zera)."
+	@echo "[Makefile] roms/chargen.bin missing - creating a 4 KB placeholder (all zeros)."
 	dd if=/dev/zero of=$@ bs=1024 count=4 status=none
 
 roms/simons.bin:
-	@echo "[Makefile] roms/simons.bin brak - Simons' BASIC nie zostanie zaladowany (kartridz nieaktywny)."
+	@echo "[Makefile] roms/simons.bin missing - Simons' BASIC will not be loaded (cartridge inactive)."
 	dd if=/dev/zero of=$@ bs=1024 count=16 status=none
 
 # --- gosc bare-metal --------------------------------------------------------
@@ -90,7 +95,7 @@ build/c64_guest.elf: $(GUEST_OBJS) guest/linker_raw.ld
 
 build/c64_guest.bin: build/c64_guest.elf
 	objcopy -O binary $< $@
-	@echo "[Makefile] c64_guest.bin: $$(stat -c%s $@) bajtow (limit RAM goscia: 524288)"
+	@echo "[Makefile] c64_guest.bin: $$(stat -c%s $@) bytes (guest RAM limit: 524288)"
 
 # --- hipernadzorca hosta -----------------------------------------------------
 
@@ -100,7 +105,7 @@ kvm_host: host/kvm_host.c host/diskimage.c host/diskimage.h
 # --- uruchomienie ------------------------------------------------------------
 
 run: all
-	@echo "[Makefile] proba nadania uprawnien do /dev/kvm (moze zapytac o haslo sudo)..."
+	@echo "[Makefile] attempting to grant permissions on /dev/kvm (may prompt for the sudo password)..."
 	-sudo chmod a+rw /dev/kvm 2>/dev/null || true
 	./kvm_host build/c64_guest.bin disk
 

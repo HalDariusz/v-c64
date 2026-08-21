@@ -139,3 +139,69 @@
 > - PRG/D64 loading system (`disk.c`)
 >
 > The `Makefile` must automatically fetch or convert ROM files using `xxd`, compile `c64_guest.bin` with no ELF headers via `gcc`/`ld`/`objcopy`, compile `kvm_host`, and allow running the whole thing with the `make run` command.
+
+--------------------------------------------------------------------------------
+
+# PROMPT 11: D64/T64 Disk Image Support (`host/diskimage.c`)
+
+**Prompt text:**
+
+> Write a C module (`host/diskimage.c` / `host/diskimage.h`) that parses D64 diskette images (standard 35-track, 174848 bytes) and read-only T64 tape archives directly from host files, without emulating the 1541 drive or the IEC protocol.
+>
+> Requirements:
+> 1. Parse the D64 directory (BAM at track 18/sector 0, directory sector chain) and locate a PRG file by name, supporting KERNAL-style wildcards (`*` and `?`).
+> 2. Parse T64 tape archives (fixed directory table) the same way, read-only.
+> 3. Implement `diskimage_directory_listing()` producing the exact byte layout of the BASIC pseudo-program the real KERNAL builds for `LOAD"$",8` + `LIST` (disk name/ID line, one line per file with block count, a `BLOCKS FREE.` footer), with pattern filtering (`LOAD"$:S*",8`).
+> 4. Implement `diskimage_save_prg()` so that, when exactly one `.d64` image is mounted in the disk directory, it allocates free data sectors from the BAM, appends a directory entry (allocating a new directory sector on track 18 if needed), frees the old sector chain when overwriting an existing name, and writes the modified image back to the host file. Fall back to a plain `.prg` file in the host directory when zero or more than one image is mounted.
+> 5. Restrict writing to the standard 35-track D64 BAM layout, while tolerating the rarer 40-track variant on read.
+
+--------------------------------------------------------------------------------
+
+# PROMPT 12: Blank D64 Image Generator (`tools/diskutil/mkd64.py`)
+
+**Prompt text:**
+
+> Write a small, dependency-free Python 3 script (`tools/diskutil/mkd64.py`) that creates an empty, correctly formatted 174848-byte D64 disk image: a valid BAM (every sector on all 35 tracks marked free except the BAM/directory track), an empty directory chain starting at track 18/sector 1, and a disk name/ID header - taking the output path, disk name, and disk ID as command-line arguments.
+
+--------------------------------------------------------------------------------
+
+# PROMPT 13: Unified SDL2 Window with Headless Fallback (`kvm_host.c`)
+
+**Prompt text:**
+
+> Extend the `kvm_host` hypervisor with an optional SDL2 front-end, auto-detected at build time via `pkg-config`, so the whole system (video + keyboard + audio) can run in a single interactive window instead of the terminal-only headless mode.
+>
+> Requirements:
+> 1. When compiled with `-DUSE_SDL2`, open one SDL2 window showing the 320x200 framebuffer scaled 2x, refreshed continuously from inside the `KVM_RUN` loop.
+> 2. Feed keystrokes from `SDL_TEXTINPUT`/`SDL_KEYDOWN` events into the same C64 keyboard-matrix path already used for terminal input (same `ascii_to_key()` table and cursor/function-key mapping), with no key auto-repeat on hold.
+> 3. Queue the already-generated SID audio samples directly to the SDL audio device via `SDL_QueueAudio`, in parallel with the existing `build/audio.wav` / `build/audio.fifo` output.
+> 4. When SDL2 is not available at build time, fall back exactly to the previous headless behavior (terminal keyboard, `frame.ppm`, `audio.wav`/`audio.fifo`) with no functional loss and no hard dependency on `libsdl2-dev`.
+> 5. Keep terminal keyboard input working at the same time as the SDL2 window, so either input source can be used interchangeably.
+
+--------------------------------------------------------------------------------
+
+# PROMPT 14: Hypercall-Driven SID Loader and Player Cartridge
+
+**Prompt text:**
+
+> Write a mechanism for loading and playing back `.sid` music files (PSID/RSID format) that bypasses the KERNAL/BASIC entirely, plus a small 6502 cartridge program driving it.
+>
+> Requirements:
+> 1. In the guest kernel (`guest/kernel.c`), intercept CPU execution at a dedicated, otherwise-unused address (`$F700`, not a real KERNAL routine) as a "hypercall": when the 6502 program counter reaches it, pause CPU emulation and ask the host (over the existing I/O ports) to parse a `.sid` file from the disk directory and load its raw music data into guest RAM at the address given in a zero-page "mailbox" structure (load address, INIT routine address, PLAY routine address - `0` meaning the tune installs its own interrupt, subsong count, default subsong, status flag).
+> 2. Write a cc65 assembly program (`tools/sidplayer/sidplayer.s`) built as a CBM80-signature autostart cartridge that: issues the hypercall via `JSR $F700` with the target filename, calls the returned INIT routine for the selected subsong, and then either installs its own VIC-II raster interrupt calling PLAY at ~50 Hz (if PLAY != 0), or simply unmasks interrupts with `CLI` (if PLAY == 0, since the tune already installed its own interrupt during INIT - common for hand-optimized players such as Martin Galway's).
+> 3. Provide the matching ld65 linker configuration (`sidplayer.cfg`) producing a flat 8 KB raw binary loaded at `$8000` (the cartridge LOROM window), with no ELF/relocation overhead.
+
+--------------------------------------------------------------------------------
+
+# PROMPT 15: Sprite + SID Test Cartridge Generator (`tools/demo/`)
+
+**Prompt text:**
+
+> Write a small, dependency-free Python toolchain (`tools/demo/asm.py` - a minimal 6502 assembler - and `tools/demo/build_demo.py`) that generates a self-contained CBM80 autostart cartridge for visually and audibly testing the VIC-II and SID emulation without needing a working BASIC/KERNAL.
+>
+> Requirements:
+> 1. The generated program must run entirely standalone (RESET vector redirected straight to the cartridge's cold-start code via the existing autostart mechanism in `memory_pla.c`), with no dependency on KERNAL or BASIC routines.
+> 2. It must clear the screen and disable text output, draw sprite 0 as a filled 24x21 diamond, and animate it diagonally across the screen, bouncing off the edges.
+> 3. It must cycle the sprite's color via register `$D027` at a fixed interval.
+> 4. It must play a simple C-major arpeggio (C4-E4-G4-C5-E5) on SID voice 1, with the ADSR envelope enabled and the gate retriggered on every note.
+> 5. `build_demo.py` must assemble the program with `asm.py` and write the resulting binary directly to `roms/sprite_sid_demo.bin`, ready to be swapped in for `roms/simons.bin` for a quick test run.

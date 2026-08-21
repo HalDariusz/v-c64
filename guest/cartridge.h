@@ -1,13 +1,19 @@
 /*
- * cartridge.h - emulacja gniazda rozszerzen C64 z Simons' BASIC (16 KB).
+ * guest/cartridge.h - emulation of the C64 expansion port with Simons'
+ * BASIC (16 KB).
  *
- * Simons' BASIC startuje w trybie 16K (linie GAME=0 / EXROM=1): ROM widoczny
- * jednoczesnie pod $8000-$9FFF (LOROM) i $A000-$BFFF (HIROM), co pozwala
- * KERNAL-owi wykryc podpis autostartu "CBM80" pod $8004-$8008 i wystartowac
- * kartridz automatycznie. Po inicjalizacji Simons' BASIC zapisuje pod adres
- * I/O1 ($DE00), co przelacza kartridz w tryb 8K (GAME=1) zwalniajac
- * $A000-$BFFF z powrotem pod BASIC-RAM, zachowujac jedynie dispatcher
- * rozszerzonych komend pod $8000-$9FFF.
+ * Simons' BASIC starts in 16K mode (GAME=0 / EXROM=1 lines): the ROM is
+ * visible at both $8000-$9FFF (LOROM) and $A000-$BFFF (HIROM), letting
+ * the KERNAL detect the "CBM80" autostart signature at $8004-$8008 and
+ * start the cartridge automatically. After initialization, Simons' BASIC
+ * writes to the I/O1 address ($DE00), switching the cartridge to 8K mode
+ * (GAME=1), which frees $A000-$BFFF back to BASIC RAM while keeping only
+ * the extended-command dispatcher at $8000-$9FFF.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef CARTRIDGE_H
 #define CARTRIDGE_H

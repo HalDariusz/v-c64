@@ -1,8 +1,13 @@
 /*
- * vic2.h - emulacja grafiki VIC-II (6569/PAL): tryby tekstowe i graficzne,
- * 8 sprite'ow sprzetowych, przerwania rastra oraz skalowanie wyjscia do
- * bufora 320x200 (docelowo kopiowanego do fizycznego bufora VESA hosta
- * pod 0xA0000).
+ * guest/vic2.h - VIC-II (6569/PAL) graphics emulation: text and bitmap
+ * modes, 8 hardware sprites, raster interrupts, and scaling of the
+ * output into a 320x200 buffer (ultimately copied to the host's physical
+ * VESA buffer at 0xA0000).
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef VIC2_H
 #define VIC2_H

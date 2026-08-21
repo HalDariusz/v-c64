@@ -1,5 +1,10 @@
 /*
- * kernel.h - typy wspoldzielone miedzy boot.s a kernel.c.
+ * guest/kernel.h - types shared between boot.s and kernel.c.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef KERNEL_H
 #define KERNEL_H

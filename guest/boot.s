@@ -1,18 +1,24 @@
-; boot.s - rozruch bare-metal goscia x86 uruchamianego bezposrednio przez
-; kvm_host.c (bez BIOS-u/GRUB-a). Hipernadzorca ustawia wektor resetu x86
-; pod fizycznym adresem 0xFFFF0 tak, aby wykonal skok "jmp far 0000:0000",
-; co przenosi CPU (w trybie rzeczywistym) do fizycznego adresu 0x00000,
-; gdzie zaczyna sie ten plik (patrz linker_raw.ld: sekcja .text @ 0x00000000).
+; guest/boot.s - bare-metal boot code for the x86 guest, run directly by
+; kvm_host.c (no BIOS/GRUB). The hypervisor sets the x86 reset vector at
+; physical address 0xFFFF0 to perform a "jmp far 0000:0000" jump, which
+; takes the CPU (in real mode) to physical address 0x00000, where this
+; file begins (see linker_raw.ld: .text section @ 0x00000000).
 ;
-; Kolejne kroki:
-;   1) natychmiastowy skok nad naglowkiem Multiboot1 (obecnym dla zgodnosci
-;      formalnej ze specyfikacja / ewentualnym uruchomieniem przez GRUB),
-;   2) klasyczne przejscie real mode -> protected mode (A20, GDT, CR0.PE),
-;   3) zbudowanie minimalnej struktury multiboot_info_min_t opisujacej
-;      liniowy bufor VESA pod fizycznym 0xA0000 (320x200x8bpp - tryb, ktory
-;      hipernadzorca gwarantuje samym faktem zmapowania tego regionu pamieci,
-;      bez potrzeby wywolywania realnego BIOS-u VBE, ktorego tu nie ma),
-;   4) wywolanie kernel_main(&mb_info).
+; Steps performed:
+;   1) an immediate jump over the Multiboot1 header (present only for
+;      formal spec compliance / in case it's ever run under GRUB),
+;   2) the classic real mode -> protected mode transition (A20, GDT,
+;      CR0.PE),
+;   3) building a minimal multiboot_info_min_t structure describing the
+;      linear VESA buffer at physical 0xA0000 (320x200x8bpp - a mode the
+;      hypervisor guarantees simply by mapping that memory region, with
+;      no need to call a real VBE BIOS, which doesn't exist here),
+;   4) calling kernel_main(&mb_info).
+;
+; Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+; on Linux /dev/kvm, with no QEMU involved.
+;
+; Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
 
 BITS 16
 section .text

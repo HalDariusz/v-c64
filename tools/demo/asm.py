@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
-"""Minimalny dwuprzebiegowy asembler 6502 - tylko instrukcje potrzebne
-do testowego kartridza sprite+SID."""
+"""tools/demo/asm.py - a minimal two-pass 6502 assembler, implementing
+only the instructions needed for the sprite+SID test cartridge.
+
+Part of v-c64 - a bare-metal Commodore 64 unikernel running directly on
+Linux /dev/kvm, with no QEMU involved.
+
+Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+"""
 
 OPS_IMPLIED = {
     'SEI': 0x78, 'CLD': 0xD8, 'TXS': 0x9A, 'RTS': 0x60, 'RTI': 0x40,
@@ -111,7 +117,7 @@ class Asm:
                 target = self.labels[arg]
                 offset = target - (addr + 2)
                 if not (-128 <= offset <= 127):
-                    raise ValueError(f"skok za daleki: {mnemonic} {arg} offset={offset}")
+                    raise ValueError(f"branch out of range: {mnemonic} {arg} offset={offset}")
                 out.append(OPS_BRANCH[mnemonic])
                 out.append(offset & 0xFF)
                 addr += 2

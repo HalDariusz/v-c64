@@ -1,20 +1,26 @@
-; sidplayer.s - pierwszy "prawdziwy" program na emulator C64-na-KVM.
+; tools/sidplayer/sidplayer.s - the first "real" program for the C64-on-KVM
+; emulator.
 ;
-; Dziala jako kartridz z autostartem (sygnatura CBM80 pod $8004-$8008),
-; wiec startuje z pominieciem KERNAL-a/BASIC-a (patrz mechanizm przekierowania
-; wektora RESET w guest/memory_pla.c). Wczytuje plik .sid (format PSID/RSID)
-; przez wlasny "hypercall" hosta (JSR $F700 - patrz guest/kernel.c:do_sid_load
-; i host/kvm_host.c:fastload_sid_execute), wywoluje jego rutyne INIT, po czym
-; albo:
-;   - jesli utwor ma jawny adres PLAY: instaluje wlasne przerwanie rastra
-;     VIC-II, ktore na kazda klatke (~50 Hz) wywoluje PLAY,
-;   - jesli PLAY == 0: utwor sam zainstalowal sobie przerwanie w trakcie
-;     INIT (typowe dla starszych/bardziej "sprytnych" playerow, np. Martin
-;     Galway) - wystarczy tylko odblokowac przerwania (CLI).
+; Runs as an autostart cartridge (CBM80 signature at $8004-$8008), so it
+; starts up bypassing the KERNAL/BASIC entirely (see the RESET vector
+; redirection mechanism in guest/memory_pla.c). Loads a .sid file
+; (PSID/RSID format) via a custom host "hypercall" (JSR $F700 - see
+; guest/kernel.c:do_sid_load and host/kvm_host.c:fastload_sid_execute),
+; calls its INIT routine, and then either:
+;   - if the tune has an explicit PLAY address: installs its own VIC-II
+;     raster interrupt that calls PLAY every frame (~50 Hz),
+;   - if PLAY == 0: the tune already installed its own interrupt during
+;     INIT (typical of older/more "clever" players, e.g. Martin Galway's)
+;     - just unmasking interrupts (CLI) is enough.
 ;
-; Nazwa pliku do wczytania jest wpisana na sztywno w stala FILENAME ponizej -
-; podmien i przebuduj (patrz README.md w tym katalogu), zeby zagrac inny
-; utwor z katalogu disk/.
+; The filename to load is hardcoded in the FILENAME constant below -
+; change it and rebuild (see this directory's README.md) to play a
+; different tune from disk/.
+;
+; Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+; on Linux /dev/kvm, with no QEMU involved.
+;
+; Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
 
 .include "c64.inc"
 

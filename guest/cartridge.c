@@ -1,3 +1,14 @@
+/*
+ * guest/cartridge.c - implementation of the Simons' BASIC cartridge
+ * emulation declared in cartridge.h: cold-start autostart detection,
+ * and switching between 16K mode ($8000-$BFFF visible) and 8K mode
+ * (freeing $A000-$BFFF back to BASIC RAM) via the I/O1 write protocol.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 #include "cartridge.h"
 #include "c64bus.h"
 

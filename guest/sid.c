@@ -1,3 +1,14 @@
+/*
+ * guest/sid.c - implementation of the SID synthesizer declared in
+ * sid.h: per-voice waveform generation (triangle/sawtooth/pulse/noise),
+ * the ADSR envelope state machine, the simplified SVF filter, and
+ * mixing the 3 voices down to the samples streamed to the host.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 #include "sid.h"
 #include "libc_shim.h"
 

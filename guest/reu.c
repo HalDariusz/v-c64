@@ -1,3 +1,13 @@
+/*
+ * guest/reu.c - implementation of the 128 KB REU DMA controller declared
+ * in reu.h: the $DF00-$DF1F register set, and the C64->REU, REU->C64,
+ * and Swap DMA transfer operations against the expansion RAM buffer.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 #include "reu.h"
 #include "c64bus.h"
 #include "libc_shim.h"

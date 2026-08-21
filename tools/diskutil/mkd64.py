@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""mkd64.py - tworzy pusty, poprawnie sformatowany obraz D64 (standardowy
-35-sciezkowy, 174848 B), gotowy do wrzucenia do disk/ i zapisu przez SAVE
-(patrz host/diskimage.c:diskimage_save_prg - dziala tylko na obrazie z
-prawidlowym BAM w ukladzie tworzonym tutaj).
+"""tools/diskutil/mkd64.py - creates an empty, correctly formatted D64
+image (standard 35-track, 174848 B), ready to drop into disk/ and be
+written to via SAVE (see host/diskimage.c:diskimage_save_prg - it only
+writes to an image with a valid BAM in the layout produced here).
 
-Uzycie:
-    python3 tools/diskutil/mkd64.py disk/blank.d64 ["NAZWA DYSKU"] [ID]
+Usage:
+    python3 tools/diskutil/mkd64.py disk/blank.d64 ["DISK NAME"] [ID]
+
+Part of v-c64 - a bare-metal Commodore 64 unikernel running directly on
+Linux /dev/kvm, with no QEMU involved.
+
+Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
 """
 import sys
 
@@ -64,7 +69,7 @@ def main():
 
     with open(out_path, "wb") as f:
         f.write(img)
-    print(f"zapisano {out_path}: {len(img)} bajtow, nazwa='{disk_name}' id='{disk_id}'")
+    print(f"wrote {out_path}: {len(img)} bytes, name='{disk_name}' id='{disk_id}'")
 
 
 if __name__ == "__main__":

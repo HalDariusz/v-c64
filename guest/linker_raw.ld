@@ -1,13 +1,19 @@
 /*
- * linker_raw.ld - uklada goscia bare-metal od adresu fizycznego 0x00000000,
- * zgodnie z regionem RAM (0x00000-0x7FFFF, 512 KB) rejestrowanym przez
- * kvm_host.c w KVM_SET_USER_MEMORY_REGION. Wynikowy plik ELF jest nastepnie
- * konwertowany do czystego binarium przez `objcopy -O binary`.
+ * guest/linker_raw.ld - lays out the bare-metal guest starting at
+ * physical address 0x00000000, matching the RAM region (0x00000-0x7FFFF,
+ * 512 KB) registered by kvm_host.c via KVM_SET_USER_MEMORY_REGION. The
+ * resulting ELF file is then converted to a plain binary via
+ * `objcopy -O binary`.
  *
- * Region MEMORY o dlugosci 512K dziala jako twarda gwarancja budowy: jesli
- * kod+dane+bss przekrocza limit, konsolidacja zakonczy sie bledem zamiast
- * cichego uszkodzenia pamieci hosta (adresy powyzej 0x7FFFF nie sa
- * zmapowane az do regionu VRAM pod 0xA0000).
+ * The 512K MEMORY region acts as a hard build-time guarantee: if
+ * code+data+bss exceeds the limit, the link fails with an error instead
+ * of silently corrupting host memory (addresses above 0x7FFFF are
+ * unmapped up to the VRAM region at 0xA0000).
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 
 ENTRY(_start)

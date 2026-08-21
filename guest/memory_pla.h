@@ -1,9 +1,14 @@
 /*
- * memory_pla.h - logika bankowania PLA procesora 6510: przelacza widok CPU
- * pomiedzy 64 KB RAM, ROM-ami (BASIC/KERNAL/CHARGEN), przestrzenia I/O oraz
- * kartridzem, na podstawie rejestru portu procesora ($00/$01) i linii
- * /GAME, /EXROM gniazda rozszerzen. Implementuje hooki fake6502_mem_read/write
- * wymagane przez rdzen fake6502.
+ * guest/memory_pla.h - 6510 CPU PLA banking logic: switches the CPU's
+ * view between 64 KB RAM, ROMs (BASIC/KERNAL/CHARGEN), the I/O space, and
+ * the cartridge, based on the CPU port register ($00/$01) and the
+ * expansion port's /GAME, /EXROM lines. Implements the
+ * fake6502_mem_read/write hooks required by the fake6502 core.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef MEMORY_PLA_H
 #define MEMORY_PLA_H

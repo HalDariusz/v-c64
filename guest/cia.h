@@ -1,8 +1,13 @@
 /*
- * cia.h - emulacja ukladow CIA 6526 #1 ($DC00) i #2 ($DD00):
- *  - timery A/B generujace przerwania (CIA1 -> IRQ, CIA2 -> NMI),
- *  - macierz klawiatury 8x8 mapowana na skankody x86 (port 0x60 hosta),
- *  - wybor banku 16 KB VIC-II (CIA2 PRA bity 0-1, logika odwrocona).
+ * guest/cia.h - emulation of the CIA 6526 #1 ($DC00) and #2 ($DD00) chips:
+ *  - Timers A/B generating interrupts (CIA1 -> IRQ, CIA2 -> NMI),
+ *  - 8x8 keyboard matrix mapped from x86 scancodes (host port 0x60),
+ *  - 16 KB VIC-II bank selection (CIA2 PRA bits 0-1, inverted logic).
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
  */
 #ifndef CIA_H
 #define CIA_H

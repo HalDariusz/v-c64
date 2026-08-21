@@ -1,3 +1,15 @@
+/*
+ * guest/memory_pla.c - implementation of the PLA banking logic declared
+ * in memory_pla.h: read6502()/write6502() (via the fake6502_mem_read/
+ * write hooks) switch between RAM, BASIC/KERNAL/CHARGEN ROM, I/O
+ * registers, and the cartridge, based on the $00/$01 CPU port bits and
+ * the expansion port's /GAME, /EXROM lines.
+ *
+ * Part of v-c64 - a bare-metal Commodore 64 unikernel running directly
+ * on Linux /dev/kvm, with no QEMU involved.
+ *
+ * Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+ */
 #include "memory_pla.h"
 #include "c64bus.h"
 #include "cartridge.h"

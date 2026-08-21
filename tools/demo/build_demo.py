@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+"""tools/demo/build_demo.py - assembles the sprite+SID test cartridge
+(guest/README in this directory) using the minimal assembler in asm.py,
+and writes the resulting binary to roms/sprite_sid_demo.bin.
+
+Part of v-c64 - a bare-metal Commodore 64 unikernel running directly on
+Linux /dev/kvm, with no QEMU involved.
+
+Author: Dariusz Nowak <hal.dariusz.nowak@gmail.com>
+"""
 import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from asm import Asm
@@ -192,7 +201,7 @@ for y in range(H):
 a.byte(*sprite_bytes)
 
 code, labels = a.assemble()
-print(f"kod: {len(code)} bajtow, od ${ORIGIN:04X} do ${ORIGIN+len(code):04X}", file=sys.stderr)
+print(f"code: {len(code)} bytes, from ${ORIGIN:04X} to ${ORIGIN+len(code):04X}", file=sys.stderr)
 print(f"NMI_HANDLER=${labels['NMI_HANDLER']:04X} SPRITE_DATA=${labels['SPRITE_DATA']:04X}", file=sys.stderr)
 
 # --- zloz pelny obraz kartridza 16 KB z naglowkiem CBM80 ---
@@ -209,4 +218,4 @@ rom[off:off+len(code)] = code
 
 with open('/mnt/DATA01/6502/v-c64/roms/sprite_sid_demo.bin', 'wb') as f:
     f.write(rom)
-print("zapisano roms/sprite_sid_demo.bin", file=sys.stderr)
+print("wrote roms/sprite_sid_demo.bin", file=sys.stderr)
