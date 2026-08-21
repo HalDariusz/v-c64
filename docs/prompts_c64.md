@@ -1,3 +1,11 @@
+> **Historical note:** this file logs the actual prompts used to build this
+> project incrementally, kept for the record. A few names/details in the
+> earlier prompts don't quite match the final layout - e.g. PROMPT 10 asks
+> for a `disk.c`, but the fast-loader logic ended up in `kernel.c`/
+> `kvm_host.c`, and image support (added later, PROMPT 11) became
+> `host/diskimage.c` instead. For the current, authoritative description of
+> the project, see the top-level [README.md](../README.md).
+
 # PROMPT 1: KVM Hypervisor Skeleton in C (`kvm_host.c`)
 
 **Prompt text:**

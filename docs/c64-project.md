@@ -1,3 +1,11 @@
+> **Historical note:** this is the original build prompt used to generate the
+> first version of this project, kept here as a build log. The final
+> implementation doesn't always match it literally where the prompt offered
+> alternatives (e.g. it uses a simplified software SID synthesis rather than
+> `reSID`, and a plain 320x200 framebuffer rather than a bordered 384x272
+> one). For the current, authoritative description of the project, see the
+> top-level [README.md](../README.md).
+
 You are the Lead Systems/Virtualization Engineer. Your goal is to implement
 and run a complete virtual Commodore 64 microcomputer project based on the
 MOS 6502/6510 CPU, Simons' Basic (16 KB ROM), VESA graphics, SID sound, and
