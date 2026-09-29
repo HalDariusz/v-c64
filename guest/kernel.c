@@ -274,6 +274,7 @@ static key_map_t scancode_to_c64(uint8_t sc)
         case 0x34: return (key_map_t){5, 4}; /* . */
         case 0x35: return (key_map_t){6, 7}; /* / */
         case 0x27: return (key_map_t){6, 2}; /* ; */
+        case 0x28: return (key_map_t){5, 5}; /* : (dedicated C64 key, not Shift+;) */
         case 0x0C: return (key_map_t){5, 3}; /* - */
         case 0x0D: return (key_map_t){5, 0}; /* = -> C64 + */
         case 0x1A: return (key_map_t){5, 6}; /* @ */

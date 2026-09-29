@@ -172,6 +172,7 @@ static key_event_t ascii_to_key(int c)
         case '.': return (key_event_t){0x34, false};
         case '/': return (key_event_t){0x35, false};
         case ';': return (key_event_t){0x27, false};
+        case ':': return (key_event_t){0x28, false}; /* dedicated C64 ":" key */
         case '-': return (key_event_t){0x0C, false};
         case '+': return (key_event_t){0x0D, false}; /* dedicated C64 "+" key */
         case '=': return (key_event_t){0x0F, false}; /* separate, dedicated C64 "=" key */
@@ -186,7 +187,8 @@ static key_event_t ascii_to_key(int c)
         case '&': return (key_event_t){0x07, true};  /* Shift+6 */
         case '(': return (key_event_t){0x09, true};  /* Shift+8 */
         case ')': return (key_event_t){0x0A, true};  /* Shift+9 */
-        case ':': return (key_event_t){0x27, true};  /* Shift+; */
+        case '[': return (key_event_t){0x28, true};  /* Shift+: */
+        case ']': return (key_event_t){0x27, true};  /* Shift+; */
         case '<': return (key_event_t){0x33, true};  /* Shift+, */
         case '>': return (key_event_t){0x34, true};  /* Shift+. */
         case '?': return (key_event_t){0x35, true};  /* Shift+/ */
